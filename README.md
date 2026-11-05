@@ -6,12 +6,16 @@ DALIZO is a Windows desktop client for Proxmox virtual machines. It combines emb
 
 Download a Windows x64 ZIP from the [Releases page](https://github.com/bernd-spieth/DALIZO/releases), extract the entire ZIP and open `DALIZO.exe`. Do not run the application from inside the ZIP.
 
-The default release build includes the .NET runtime. These additional components are needed for the respective console types:
+Choose the download that suits you:
 
-- **SPICE:** Install the x64 VirtViewer runtime from the [official download page](https://www.spice-space.org/download.html). DALIZO looks for `VirtViewer*\bin` under Program Files. Alternatively, set `PROXMOX_SPICE_RUNTIME` to a compatible runtime's `bin` directory. The native runtime is not included in the ZIP.
-- **noVNC and serial:** Install the [Microsoft Edge WebView2 Evergreen Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/).
+| Package name ending | .NET installation |
+| --- | --- |
+| `win-x64.zip` | Included. No separate .NET installation needed. |
+| `win-x64-no-runtime.zip` | Smaller download. Install **.NET 10 Desktop Runtime for Windows x64** first. |
 
-This is not an all-dependencies installer. The native SPICE libraries and WebView2 Runtime remain separate installations. The executable is not code-signed.
+The **SDK is not needed to run DALIZO**. The plain .NET Runtime and ASP.NET Core Runtime alone are not sufficient for this desktop application.
+
+See [Prerequisites](PREREQUISITES.md) for official download links and step-by-step installation. SPICE needs VirtViewer x64; noVNC and serial consoles need Microsoft Edge WebView2 Runtime. Neither component is bundled in either ZIP. The executable is not code-signed.
 
 ## Connect to Proxmox
 
@@ -32,10 +36,10 @@ For manual setup, the chosen VM paths need `VM.Audit`, `VM.Console`, `VM.PowerMg
 Use Windows x64, PowerShell, and the .NET 10 SDK. Internet access is needed to restore NuGet packages. No Proxmox account is needed to build or run the synthetic API checks.
 
 ```powershell
-.\scripts\build.ps1 -Version 0.1.0-preview.4
+.\scripts\build.ps1 -Version 0.1.0-preview.5
 ```
 
-The script runs the API checks and creates a self-contained Windows x64 ZIP and SHA-256 checksum under `artifacts`. For a smaller build that needs the .NET Desktop Runtime installed separately, add `-FrameworkDependent`.
+The script runs the API checks and creates a self-contained Windows x64 ZIP and SHA-256 checksum under `artifacts`. For the smaller `win-x64-no-runtime.zip`, run the same command with `-FrameworkDependent`. Both variants have separate ZIP names and checksums and can be built for the same version.
 
 The project pins the WebView2 SDK package version. Web console libraries are included with their notices. The SPICE runtime is loaded dynamically; native DLLs are not required to compile.
 

@@ -3,7 +3,7 @@ $ErrorActionPreference='Stop'
 if($Version -notmatch '^\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?$'){throw 'Use a version such as 0.1.0 or 0.1.0-preview.1.'}
 $root=Split-Path $PSScriptRoot -Parent
 $artifact=Join-Path $root 'artifacts'
-$packageName="DALIZO-$Version-win-x64"
+$packageName=if($FrameworkDependent){"DALIZO-$Version-win-x64-no-runtime"}else{"DALIZO-$Version-win-x64"}
 $publish=Join-Path $artifact ($packageName+'-'+[Guid]::NewGuid().ToString('N').Substring(0,8))
 New-Item -ItemType Directory -Force $publish | Out-Null
 Push-Location $root
@@ -13,9 +13,9 @@ try {
     $contained=if($FrameworkDependent){'false'}else{'true'}
     dotnet publish src/DALIZO.csproj -c Release -r win-x64 --self-contained $contained -p:Optimize=true -p:DebugType=None -p:DebugSymbols=false "-p:Version=$Version" -o $publish
     if($LASTEXITCODE -ne 0){throw 'Build failed.'}
-    foreach($name in @('README.md','THIRD-PARTY.md','RELEASE-NOTES.md','LICENSE','COPYRIGHT')){if(Test-Path $name){Copy-Item $name $publish}}
+    foreach($name in @('README.md','PREREQUISITES.md','THIRD-PARTY.md','RELEASE-NOTES.md','LICENSE','COPYRIGHT')){if(Test-Path $name){Copy-Item $name $publish}}
     Copy-Item licenses $publish -Recurse
-    if($FrameworkDependent){'This build requires the .NET 10 Desktop Runtime (x64).' | Set-Content (Join-Path $publish 'RUNTIME-REQUIRED.txt')}
+    if($FrameworkDependent){'Install the .NET 10 Desktop Runtime for Windows x64 before starting DALIZO.exe. The SDK is not required. Download: https://dotnet.microsoft.com/en-us/download/dotnet/10.0 (Run apps > .NET Desktop Runtime > Windows x64). See PREREQUISITES.md.' | Set-Content (Join-Path $publish 'RUNTIME-REQUIRED.txt')}
     if(!$FrameworkDependent){
         $assets=Get-Content (Join-Path $root 'src/obj/project.assets.json') -Raw | ConvertFrom-Json
         foreach($framework in $assets.project.frameworks.PSObject.Properties){

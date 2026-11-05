@@ -1,9 +1,12 @@
-# DALIZO executable name update
+# DALIZO - choice of runtime packages
 
-The Windows application is now named `DALIZO.exe`. Dialog resources and documentation have been updated to match.
+Two Windows x64 downloads are available:
 
-Extract the complete ZIP and launch `DALIZO.exe`.
+- **DALIZO-0.1.0-preview.5-win-x64.zip**: includes .NET. No separate .NET installation needed.
+- **DALIZO-0.1.0-preview.5-win-x64-no-runtime.zip**: smaller download. Install the **.NET 10 Desktop Runtime for Windows x64** from [Microsoft](https://dotnet.microsoft.com/en-us/download/dotnet/10.0) first. The SDK is not needed.
 
-The .NET runtime is included. Install VirtViewer x64 for SPICE and Microsoft Edge WebView2 Runtime for noVNC/serial if they are not already installed. Those runtimes are not bundled. See README for official download links.
+Extract the complete ZIP and start `DALIZO.exe`.
 
-The executable is unsigned. This preview has passed synthetic API and focused UI checks. It has not been validated on a clean Windows installation with every guest configuration.
+Both packages include `PREREQUISITES.md` with installation steps and official download links. VirtViewer x64 for SPICE and Microsoft Edge WebView2 Runtime for noVNC/serial remain separate prerequisites. No runtime is silently downloaded or installed.
+
+The executable is unsigned. This preview has synthetic API and focused UI validation; it has not been validated on a clean Windows installation with every guest configuration.
