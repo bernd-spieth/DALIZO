@@ -1,0 +1,29 @@
+name: Build Windows
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+      - name: Test and package
+        shell: pwsh
+        run: ./scripts/build.ps1 -Version 0.1.0-preview.3
+      - uses: actions/upload-artifact@v7
+        with:
+          name: DALIZO-windows-x64
+          path: |
+            artifacts/*.zip
+            artifacts/*.sha256
+          if-no-files-found: error

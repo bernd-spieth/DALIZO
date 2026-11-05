@@ -1,0 +1,5 @@
+html,body {height:100%;margin:0;background:#101820;color:#e6edf3;overflow:hidden;font-family:Segoe UI,sans-serif}
+#terminal {height:100%;padding:8px;box-sizing:border-box}
+#menu {position:fixed;z-index:20;background:white;border:1px solid #cbd5e1;border-radius:6px;padding:5px}
+#menu button {display:block;width:220px;text-align:left;background:transparent;border:0;padding:9px;color:#23354d}
+#menu button:hover {background:#e3edf9}
