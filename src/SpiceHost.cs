@@ -42,12 +42,15 @@ internal sealed class SpiceHost : WindowsFormsHost
         Unloaded+=(_,_)=>{view.ReleaseInput();var window=Window.GetWindow(this);if(window!=null)window.Deactivated-=OnDeactivate;};
     }
     void OnDeactivate(object? sender,EventArgs e)=>view.ReleaseInput();
-    static void Initialize(){
-        if(initialized)return;
+    internal static string? FindRuntime(){
         var explicitPath=Environment.GetEnvironmentVariable("PROXMOX_SPICE_RUNTIME");
         var candidates=new List<string>();if(!string.IsNullOrWhiteSpace(explicitPath))candidates.Add(Path.GetFullPath(explicitPath));
         candidates.AddRange(Directory.GetDirectories(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),"VirtViewer*").OrderByDescending(p=>p).Select(p=>Path.Combine(p,"bin")));
-        string? runtime=candidates.FirstOrDefault(p=>File.Exists(Path.Combine(p,"libspice-client-glib-2.0-8.dll")));
+        return candidates.FirstOrDefault(p=>File.Exists(Path.Combine(p,"libspice-client-glib-2.0-8.dll")));
+    }
+    static void Initialize(){
+        if(initialized)return;
+        string? runtime=FindRuntime();
         if(runtime==null||!N.SetDllDirectory(runtime))throw new InvalidOperationException("Install VirtViewer x64 or set PROXMOX_SPICE_RUNTIME to its bin directory.");
         initialized=true;
     }

@@ -19,6 +19,8 @@ internal static class ErrorText
         void Add(Exception e,int depth){if(depth>12||!seen.Add(e))return;result.AppendLine(new string(' ',depth*2)+e.GetType().FullName+" (0x"+e.HResult.ToString("X8")+")");result.AppendLine(Clean(e.Message));
             if(e is AggregateException aggregate){foreach(var inner in aggregate.InnerExceptions)Add(inner,depth+1);}else if(e.InnerException!=null)Add(e.InnerException,depth+1);
         }
-        Add(error,0);return result.ToString();
+        Add(error,0);
+        if(result.ToString().Contains("PartialChain",StringComparison.OrdinalIgnoreCase))result.Insert(0,"Windows could not build the server certificate chain to a root CA. A CA/intermediate certificate may be missing. Install the correct CA certificate, fix the server chain, or explicitly enable Ignore HTTPS certificate errors in this server profile. This is not a missing SPICE or WebView2 runtime.\n\n");
+        return result.ToString();
     }
 }

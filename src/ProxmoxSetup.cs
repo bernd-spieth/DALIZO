@@ -36,10 +36,10 @@ public sealed class SetupResult(string id,string secret)
 public sealed partial class ProxmoxSetup : IDisposable
 {
     readonly HttpClient http;
-    public ProxmoxSetup(string address,HttpMessageHandler? handler=null)
+    public ProxmoxSetup(string address,HttpMessageHandler? handler=null,bool ignoreCertificateErrors=false)
     {
         using var validation=new ProxmoxApi(address);
-        http=new HttpClient(handler ?? new HttpClientHandler {AllowAutoRedirect=false,UseCookies=false})
+        http=new HttpClient(handler ?? TlsPolicy.Handler(new Uri(address),ignoreCertificateErrors,false))
             {BaseAddress=new Uri(address),Timeout=TimeSpan.FromSeconds(25)};
     }
     async Task<JsonElement> Request(HttpMethod method,string path,Dictionary<string,string>? fields=null)

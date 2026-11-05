@@ -35,7 +35,7 @@ public partial class MainWindow
         dialog.Note("First, check what can be removed. Nothing is deleted until you confirm the next step. If removal fails, the saved connection is kept so you can try again.");
         string? result=null;
         dialog.ValidateAsync=async()=> {
-            using var api=new ProxmoxSetup(server.Address);
+            using var api=new ProxmoxSetup(server.Address,ignoreCertificateErrors:server.IgnoreCertificateErrors);
             string pass=password.Password;password.Clear();
             try {
                 await api.LoginAsync(admin.Text.Trim(),pass,()=>{

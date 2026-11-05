@@ -18,6 +18,14 @@ public partial class MainWindow
                 foreach(var nested in Buttons(child))yield return nested;
             }
         }
+        var localChecks=await Task.Run(Prerequisites.Check);
+        if(localChecks.Length!=3||!localChecks[0].Ready)throw new Exception("Local prerequisite report incomplete");
+        File.WriteAllLines(Path.Combine(AppContext.BaseDirectory,"prerequisite-checks.txt"),localChecks.Select(c=>c.Name+": "+c.Ready+" - "+c.Detail));
+        var checkTimer=new DispatcherTimer{Interval=TimeSpan.FromMilliseconds(100)};bool prerequisitesShown=false;
+        checkTimer.Tick+=(_,_)=>{var popup=Application.Current.Windows.OfType<EditorDialog>().FirstOrDefault(w=>w.Title=="Prerequisites");if(popup==null)return;checkTimer.Stop();popup.UpdateLayout();prerequisitesShown=true;
+            var preview=new RenderTargetBitmap((int)popup.ActualWidth,(int)popup.ActualHeight,96,96,PixelFormats.Pbgra32);preview.Render(popup);var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(preview));using(var file=File.Create(Path.Combine(AppContext.BaseDirectory,"prerequisites-preview.png")))encoder.Save(file);popup.Close();};
+        checkTimer.Start();try{ShowPrerequisites(new[]{new ComponentCheck("Windows desktop / .NET",true,"Running"),new ComponentCheck("SPICE",false,"Install VirtViewer x64","https://www.spice-space.org/download.html"),new ComponentCheck("noVNC / Serial",false,"Install WebView2","https://developer.microsoft.com/en-us/microsoft-edge/webview2/")});}finally{checkTimer.Stop();}
+        if(!prerequisitesShown)throw new Exception("Missing-component dialog did not open");
         Exception? helpFailure=null;
         var helpCheck=new EditorDialog(this,"Help and errors check","Submit");
         var input=helpCheck.Text("Server");helpCheck.Help("A helpful server explanation.");
@@ -105,6 +113,16 @@ public partial class MainWindow
                     }
                     if(window.Title!=(automatic?"Add server automatically":"Add server manually"))return;
                     modeTimer.Stop();
+                    var tls=Elements(window).OfType<CheckBox>().Single(c=>c.Content as string=="Ignore HTTPS certificate errors (unsafe)");
+                    if(tls.IsChecked==true)throw new Exception("Unsafe TLS default");
+                    tls.IsChecked=true;window.UpdateLayout();
+                    if(!Elements(window).OfType<TextBlock>().Any(t=>t.Text.Contains("could be intercepted")&&t.IsVisible))throw new Exception("TLS warning missing");
+                    var addressBox=Elements(window).OfType<TextBox>().First(t=>t.IsEnabled&&!t.IsReadOnly);var savedText=addressBox.Text;
+                    // Locate the actual address field by assigning text only after its known sibling label.
+                    var labelsPanel=Elements(window).OfType<StackPanel>().First(p=>p.Children.OfType<StackPanel>().Any(row=>row.Children.OfType<TextBlock>().Any(t=>t.Text=="Proxmox address (HTTPS)")));
+                    var labelRow=labelsPanel.Children.OfType<StackPanel>().Single(row=>row.Children.OfType<TextBlock>().Any(t=>t.Text=="Proxmox address (HTTPS)"));
+                    addressBox=(TextBox)labelsPanel.Children[labelsPanel.Children.IndexOf(labelRow)+1];savedText=addressBox.Text;addressBox.Text="https://changed.example.test:8006";
+                    if(tls.IsChecked==true)throw new Exception("TLS exception retained after changing server address");addressBox.Text=savedText;
                     var labels=string.Join("\n",Elements(window).OfType<TextBlock>().Select(t=>t.Text).Concat(window.HelpTexts));
                     if(labels.Contains("Token secret") == automatic)throw new Exception("Wrong fields shown for selected server setup mode.");
                     if(!labels.Contains("https://pve.example.org:8006"))throw new Exception("Address example missing.");

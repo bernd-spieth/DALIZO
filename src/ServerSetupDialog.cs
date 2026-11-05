@@ -5,24 +5,25 @@ using System.Windows.Controls;
 namespace ProxmoxSpice;
 public partial class MainWindow
 {
-    void AddAdministratorSetup(EditorDialog owner,TextBox address,TextBox token,PasswordBox secret,CheckBox remember)
+    void AddAdministratorSetup(EditorDialog owner,TextBox address,TextBox token,PasswordBox secret,CheckBox remember,CheckBox? ignoreTls=null)
     {
         var start=new Button {Content="Set up access with administrator…",Margin=new Thickness(0,12,0,0),Padding=new Thickness(10,6,10,6)};
         owner.AddField(start);
         start.Click+=(_,_)=> {
             try {
-                var result=ShowAdministratorSetup(owner,address.Text.Trim());
+                var result=ShowAdministratorSetup(owner,address.Text.Trim(),ignoreCertificateErrors:ignoreTls?.IsChecked==true);
                 if(result==null)return;
                 token.Text=result.TokenId;secret.Password=result.Secret;remember.IsChecked=true;
                 owner.Note("Access created and verified. Click Apply to save this server.");start.IsEnabled=false;
             } catch(Exception error) {ErrorDetails.Show(owner,"Access setup failed.",error,new[]{secret.Password});}
         };
     }
-    SetupResult? ShowAdministratorSetup(Window owner,string address,Action<SetupResult>? save=null)
+    SetupResult? ShowAdministratorSetup(Window owner,string address,Action<SetupResult>? save=null,bool ignoreCertificateErrors=false)
     {
-                using(var check=new ProxmoxApi(address)){}
+                using(var check=new ProxmoxApi(address,ignoreCertificateErrors:ignoreCertificateErrors)){}
                 var dialog=new EditorDialog(owner,"Automatic Proxmox access setup",save==null?"Create access":"Create access and add server");
                 dialog.Note("Server: "+address);
+                if(ignoreCertificateErrors)dialog.Note("HTTPS certificate checks are disabled for this server. Administrator credentials could be intercepted.");
                 var admin=dialog.Text("Proxmox administrator username","root@pam");
                 dialog.Hint("Example: root@pam or admin@pve");
                 var password=dialog.Password("Administrator password (not saved)"); dialog.Help("Your administrator password is not saved. If your account requires an authenticator code, you will be prompted for it. For security-key or browser-based sign-in, use Manual setup with an existing API token.");
@@ -48,7 +49,7 @@ public partial class MainWindow
                     var scoped=SetupPlan.Create(all.IsChecked==true,ids.Text);
                     var plan=initial with {Paths=scoped.Paths};
                     string pass=password.Password;password.Clear();
-                    using var setup=new ProxmoxSetup(address);
+                    using var setup=new ProxmoxSetup(address,ignoreCertificateErrors:ignoreCertificateErrors);
                     try {
                         await setup.LoginAsync(admin.Text.Trim(),pass,()=> {
                             var factor=new EditorDialog(dialog,"Two-factor authentication","Continue");
@@ -72,7 +73,7 @@ public partial class MainWindow
                         }
                     }
                     async Task Verify(SetupResult generated) {
-                        using var verify=new ProxmoxApi(address);
+                        using var verify=new ProxmoxApi(address,ignoreCertificateErrors:ignoreCertificateErrors);
                         verify.UseToken(generated.TokenId,generated.Secret);
                         await verify.VerifySetupPermissionsAsync(plan.Paths);
                         save?.Invoke(generated);

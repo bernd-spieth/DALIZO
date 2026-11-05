@@ -52,3 +52,11 @@ The selected console must also be configured in Proxmox. A serial console needs 
 ## Microsoft reference
 
 Microsoft explains the distinction between runtime and SDK, and which runtime runs WPF and Windows Forms applications, in [Install .NET on Windows](https://learn.microsoft.com/en-us/dotnet/core/install/windows).
+
+## Startup check and certificate errors
+
+DALIZO checks the local SPICE library and WebView2 availability when it starts. Missing components are reported with download links; server management remains usable. Run the check again from **Options > Check prerequisites**. If .NET is missing from a no-runtime installation, Windows must first start the .NET host: install the Desktop Runtime or use the package that includes it.
+
+HTTPS certificates are checked when connecting to each server, not by the local component check. `PartialChain` means Windows could not build the certificate chain to a root CA. A missing CA/intermediate certificate or an incomplete server chain can cause this. This is separate from VirtViewer and WebView2 installation.
+
+**Add server** and **Edit server** offer **Ignore HTTPS certificate errors (unsafe)**. It is off by default, saved per server, and reset in the editor if you change the address. It applies to API requests (including administrator setup and permission management) and noVNC/serial WebSockets. The server identity is no longer verified; passwords and API tokens could be intercepted. Prefer trusting the correct CA or fixing the server certificate chain. SPICE's own ticket certificate handling is unchanged. Reconnect existing consoles after changing this setting.

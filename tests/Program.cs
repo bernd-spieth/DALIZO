@@ -3,6 +3,7 @@ using System.Net;
 using ProxmoxSpice;
 
 static void Check(bool value, string message) { if (!value) throw new Exception(message); }
+await TlsChecks.Run();
 var calls = new List<(string Path, string Body, string Auth)>();
 using var api = new ProxmoxApi("https://pve.example.test:8006", new Fake(async req =>
 {

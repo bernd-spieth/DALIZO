@@ -1,22 +1,18 @@
-# DALIZO - text-sized help icons
+# DALIZO - server certificate option and startup checks
 
-Help buttons are now 16 × 16 pixels and aligned with the adjacent text. This is the locally reviewed and approved help-icon layout.
+Add/Edit server now offers **Ignore HTTPS certificate errors (unsafe)**. It is off by default and saved separately for each server. It applies to API requests, automatic administrator setup, permission management and noVNC/serial connections. Changing the address in the editor resets the option. Existing profiles continue to validate certificates.
 
-Short examples remain visible below input fields; longer supplemental explanations use tooltips.
+When enabled, the server identity is not verified and passwords/API tokens could be intercepted. Prefer trusting the correct CA or fixing the server certificate chain. SPICE's ticket certificate handling is unchanged. Reconnect existing consoles after changing the setting.
 
-Question-mark help buttons now sit beside their related options, including Automatic/Manual server setup. Checkbox help is vertically aligned and uses a compact square button. Hovering or clicking shows a tooltip rather than a separate help dialog.
+DALIZO checks the local SPICE library and WebView2 availability at startup. Missing components are reported with download links; server management remains usable. Recheck using **Options > Check prerequisites**. Server certificates and permissions are checked by the server connection test. A missing .NET runtime in the no-runtime package must be installed before DALIZO can start.
 
-Connection and dialog failures now offer expandable, copyable error details, including nested exception messages. Main-window errors can be reopened under Options > Last error details. Known credentials are redacted; review server names and paths before sharing. HTTPS certificate validation remains enabled.
+Error details now explain PartialChain certificate failures. Short field examples and compact help tooltips are retained.
 
-Field explanations are available through question-mark buttons and tooltips. Warnings about changes remain visible. Synthetic tests cover nested SSL causes, credential redaction, help interaction and error detail expansion. The reported failure on the other computer has not been reproduced; the details will help identify its cause.
+## Downloads
 
-Two Windows x64 downloads are available:
+- **DALIZO-0.1.0-preview.9-win-x64.zip**: includes .NET.
+- **DALIZO-0.1.0-preview.9-win-x64-no-runtime.zip**: requires .NET 10 Desktop Runtime for Windows x64, available from [Microsoft](https://dotnet.microsoft.com/en-us/download/dotnet/10.0).
 
-- **DALIZO-0.1.0-preview.8-win-x64.zip**: includes .NET. No separate .NET installation needed.
-- **DALIZO-0.1.0-preview.8-win-x64-no-runtime.zip**: smaller download. Install the **.NET 10 Desktop Runtime for Windows x64** from [Microsoft](https://dotnet.microsoft.com/en-us/download/dotnet/10.0) first. The SDK is not needed.
+Extract the entire ZIP and open DALIZO.exe. See PREREQUISITES.md for installation steps. VirtViewer x64 for SPICE and Microsoft Edge WebView2 Runtime for noVNC/serial remain separate prerequisites. No profiles or credentials are included.
 
-Extract the complete ZIP and start `DALIZO.exe`.
-
-Both packages include `PREREQUISITES.md` with installation steps and official download links. VirtViewer x64 for SPICE and Microsoft Edge WebView2 Runtime for noVNC/serial remain separate prerequisites. No runtime is silently downloaded or installed.
-
-The executable is unsigned. This preview has synthetic API and focused UI validation; it has not been validated on a clean Windows installation with every guest configuration.
+Validation: local loopback TLS tests verified rejection by default, explicit opt-in and isolation; API/profile tests and focused UI tests passed. This does not establish compatibility with every live Proxmox certificate or guest configuration. The executable is unsigned.

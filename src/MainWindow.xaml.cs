@@ -19,7 +19,7 @@ public partial class MainWindow : Window
     SpiceHost? host;
     NoVncHost? vncHost;
     bool busy, closing;
-    Func<ServerProfile, string, ProxmoxApi> apiFactory = (s, secret) => { var api = new ProxmoxApi(s.Address); api.UseToken(s.TokenId, secret); return api; };
+    Func<ServerProfile, string, ProxmoxApi> apiFactory = (s, secret) => { var api = new ProxmoxApi(s.Address,ignoreCertificateErrors:s.IgnoreCertificateErrors); api.UseToken(s.TokenId, secret); return api; };
     public MainWindow(ProfileStore store, bool smoke = false, string? liveVm = null)
     {
         this.store = store; data = store.Load(); InitializeComponent(); InitializeVmSort(); InitializeGuestShortcuts(); InitializeStatusNotification(); InitializeFloatingSidebar(); InitializeManagement(smoke || liveVm != null); Refresh(); ShowConsoleHome();
@@ -30,6 +30,7 @@ public partial class MainWindow : Window
         Closed += (_, _) => { closing = true; operation?.Cancel(); CloseAllConsoles(); host?.Dispose(); vncHost?.Dispose(); sessionSecrets.Clear(); };
         if (liveVm != null) Loaded += async (_, _) => await LiveRenderTest(liveVm);
         else if (smoke) Loaded += async (_, _) => await SmokeTest();
+        else Loaded += async (_, _) => await CheckPrerequisites(true);
     }
     // WPF tracks selected items in hash-based collections. Mutable UI state must
     // not affect equality or hashing, so rows use reference identity, not records.
@@ -148,14 +149,15 @@ public partial class MainWindow : Window
         var proxy = dialog.Text("SPICE proxy (optional, without port)", original?.Proxy ?? "");
         dialog.Hint("Example: pve.example.org (blank = server hostname)");
 
-        AddConnectionTest(dialog, address, token, secret, proxy);
-        if(original!=null)AddAdministratorSetup(dialog,address,token,secret,remember);
+        var ignoreTls=AddCertificateOption(dialog,address,original?.IgnoreCertificateErrors??false);
+        AddConnectionTest(dialog, address, token, secret, proxy,ignoreTls);
+        if(original!=null)AddAdministratorSetup(dialog,address,token,secret,remember,ignoreTls);
         ServerProfile? result = null; string plain = "";
         dialog.Validate = () =>
         {
             plain = secret.Password;
             if (remember.IsChecked == true && string.IsNullOrEmpty(plain)) throw new InvalidOperationException("Enter a token secret to save it.");
-            result = new(original?.Id ?? Guid.NewGuid(), name.Text.Trim(), address.Text.Trim(), token.Text.Trim(), proxy.Text.Trim(), remember.IsChecked == true ? SecretProtection.Protect(plain) : null);
+            result = new(original?.Id ?? Guid.NewGuid(), name.Text.Trim(), address.Text.Trim(), token.Text.Trim(), proxy.Text.Trim(), remember.IsChecked == true ? SecretProtection.Protect(plain) : null,ignoreTls.IsChecked==true);
             var next = Snapshot(); next.Servers.RemoveAll(s => s.Id == result.Id); next.Servers.Add(result); ProfileStore.Validate(next); return true;
         };
         if (dialog.ShowDialog() != true || result == null) return;

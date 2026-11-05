@@ -26,9 +26,10 @@ public partial class MainWindow
         var proxy=dialog.Text("SPICE proxy (optional)");dialog.Hint("Example: pve.example.org");dialog.Help("Enter a hostname or IP without a protocol or port. Leave empty to use the server hostname.");
         var remember=dialog.Check("Remember this connection on this Windows account",true);
         dialog.Help("Next, sign in as an administrator and choose which VMs DALIZO may access. DALIZO handles the login key for you.");
+        var ignoreTls=AddCertificateOption(dialog,address,false);
         var id=Guid.NewGuid();
         dialog.Validate=()=> {
-            var draft=new ServerProfile(id,name.Text.Trim(),address.Text.Trim(),"pending@pve!client",proxy.Text.Trim(),null);
+            var draft=new ServerProfile(id,name.Text.Trim(),address.Text.Trim(),"pending@pve!client",proxy.Text.Trim(),null,ignoreTls.IsChecked==true);
             var next=Snapshot();next.Servers.Add(draft);ProfileStore.Validate(next);
             using var check=new ProxmoxApi(draft.Address);
             if(draft.Proxy!=""&&Uri.CheckHostName(draft.Proxy)==UriHostNameType.Unknown)throw new ArgumentException("Enter a proxy hostname/IP without a port, or leave it empty.");
@@ -36,10 +37,10 @@ public partial class MainWindow
         };
         if(dialog.ShowDialog()!=true)return;
         ShowAdministratorSetup(owner ?? this,address.Text.Trim(),generated=> {
-            var server=new ServerProfile(id,name.Text.Trim(),address.Text.Trim(),generated.TokenId,proxy.Text.Trim(),remember.IsChecked==true?SecretProtection.Protect(generated.Secret):null);
+            var server=new ServerProfile(id,name.Text.Trim(),address.Text.Trim(),generated.TokenId,proxy.Text.Trim(),remember.IsChecked==true?SecretProtection.Protect(generated.Secret):null,ignoreTls.IsChecked==true);
             var next=Snapshot();next.Servers.Add(server);Commit(next,server:server.Id);
             sessionSecrets[server.Id]=generated.Secret;
-        });
+        },ignoreCertificateErrors:ignoreTls.IsChecked==true);
         if(data.Servers.Any(s=>s.Id==id)) {
             lastInventorySync.Remove(id);Status("Server added automatically. The VM list will synchronize now.");
             if(!smokeMode)_=PollStatus();

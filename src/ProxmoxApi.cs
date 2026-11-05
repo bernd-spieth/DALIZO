@@ -11,14 +11,16 @@ public sealed partial class ProxmoxApi : IDisposable
 {
     private readonly HttpClient http;
     public string Host { get; }
+    readonly bool ignoreCertificateErrors;
 
-    public ProxmoxApi(string address, HttpMessageHandler? handler = null)
+    public ProxmoxApi(string address, HttpMessageHandler? handler = null, bool ignoreCertificateErrors = false)
     {
         if (!Uri.TryCreate(address, UriKind.Absolute, out var uri) || uri.Scheme != "https" ||
             uri.AbsolutePath != "/" || uri.Query.Length != 0 || uri.Fragment.Length != 0 || uri.UserInfo.Length != 0)
             throw new ArgumentException("Enter an HTTPS address without a path, for example https://pve.example.org:8006");
         Host = uri.Host;
-        http = new HttpClient(handler ?? new HttpClientHandler { AllowAutoRedirect = false })
+        this.ignoreCertificateErrors=ignoreCertificateErrors;
+        http = new HttpClient(handler ?? TlsPolicy.Handler(uri,ignoreCertificateErrors))
         { BaseAddress = uri, Timeout = TimeSpan.FromSeconds(25) };
     }
 

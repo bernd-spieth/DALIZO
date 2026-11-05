@@ -15,7 +15,7 @@ public partial class MainWindow
             if(matches.Length!=1) throw new InvalidOperationException("Exactly one saved VM with the requested name is required.");
             var vm=matches[0]; var server=data.Servers.Single(s=>s.Id==vm.ServerId);
             if(string.IsNullOrEmpty(server.ProtectedSecret)) throw new InvalidOperationException("No saved token; interactive credentials were not requested.");
-            using var api = new ProxmoxApi(server.Address);
+            using var api = new ProxmoxApi(server.Address,ignoreCertificateErrors:server.IgnoreCertificateErrors);
             api.UseToken(server.TokenId, SecretProtection.Unprotect(server.ProtectedSecret));
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(80));
             if(Environment.GetCommandLineArgs().Contains("--inventory-check"))

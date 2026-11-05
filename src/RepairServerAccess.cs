@@ -16,7 +16,7 @@ public partial class MainWindow
         dialog.Help("If your account requires an authenticator code, you will be prompted for it. If DALIZO cannot safely identify the account settings, it will ask you to have an administrator check them.");
         bool repaired=false;
         dialog.ValidateAsync=async()=>{
-            using var api=new ProxmoxSetup(server.Address);
+            using var api=new ProxmoxSetup(server.Address,ignoreCertificateErrors:server.IgnoreCertificateErrors);
             string pass=password.Password;password.Clear();
             try {await api.LoginAsync(admin.Text.Trim(),pass,()=>{
                 var factor=new EditorDialog(dialog,"Two-factor authentication","Continue");var code=factor.Password("TOTP code");
@@ -32,7 +32,7 @@ public partial class MainWindow
             confirm.Note("Your login key stays the same. Please do not change permissions in Proxmox during this step. If the final check fails, permissions already added remain in place; run this check again to continue.");
             if(confirm.ShowDialog()!=true)return false;
             await api.RepairAccessAsync(preview,async paths=>{
-                using var verify=new ProxmoxApi(server.Address);verify.UseToken(server.TokenId,secret);
+                using var verify=new ProxmoxApi(server.Address,ignoreCertificateErrors:server.IgnoreCertificateErrors);verify.UseToken(server.TokenId,secret);
                 await verify.VerifySetupPermissionsAsync(paths);
             });
             repaired=true;return true;

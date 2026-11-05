@@ -46,6 +46,7 @@ public sealed partial class ProxmoxApi
     public async Task<ClientWebSocket> OpenVncSocketAsync(Vm vm,VncTicket ticket,CancellationToken ct)
     {
         var socket=new ClientWebSocket();
+        TlsPolicy.Configure(socket.Options,ignoreCertificateErrors);
         socket.Options.SetRequestHeader("Authorization",http.DefaultRequestHeaders.GetValues("Authorization").Single());
         socket.Options.AddSubProtocol("binary");
         socket.Options.KeepAliveInterval=TimeSpan.FromSeconds(20);

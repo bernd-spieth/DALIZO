@@ -25,7 +25,7 @@ See [Prerequisites](PREREQUISITES.md) for official download links and step-by-st
 4. For automatic setup, choose all VMs or enter the specific VM IDs. Review the permissions before creating access. The administrator password is not saved.
 5. Open the VM menu and connect to a VM.
 
-The Proxmox HTTPS certificate must be trusted by Windows. Do not publish server profiles or token secrets. Saved secrets are encrypted for the current Windows account. Profiles are stored under `%LOCALAPPDATA%\DalizoCurrent`.
+By default, the Proxmox HTTPS certificate must be trusted by Windows. A per-server exception is available under Add/Edit server; see PREREQUISITES.md. Do not publish server profiles or token secrets. Saved secrets are encrypted for the current Windows account. Profiles are stored under `%LOCALAPPDATA%\DalizoCurrent`.
 
 Automatic setup grants console access, status, power controls, CPU, memory, name/description and network settings for the chosen VMs. It grants network use across SDN zones. Existing automatically created connections can use **Manage servers > Repair permissions**. Custom accounts need administrator review.
 
@@ -42,7 +42,7 @@ If a dialog fails, expand **Show error details** and use **Copy details**. Error
 Use Windows x64, PowerShell, and the .NET 10 SDK. Internet access is needed to restore NuGet packages. No Proxmox account is needed to build or run the synthetic API checks.
 
 ```powershell
-.\scripts\build.ps1 -Version 0.1.0-preview.8
+.\scripts\build.ps1 -Version 0.1.0-preview.9
 ```
 
 The script runs the API checks and creates a self-contained Windows x64 ZIP and SHA-256 checksum under `artifacts`. For the smaller `win-x64-no-runtime.zip`, run the same command with `-FrameworkDependent`. Both variants have separate ZIP names and checksums and can be built for the same version.

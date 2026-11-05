@@ -20,8 +20,8 @@ jobs:
       - name: Test and package
         shell: pwsh
         run: |
-          ./scripts/build.ps1 -Version 0.1.0-preview.8
-          ./scripts/build.ps1 -Version 0.1.0-preview.8 -FrameworkDependent
+          ./scripts/build.ps1 -Version 0.1.0-preview.9
+          ./scripts/build.ps1 -Version 0.1.0-preview.9 -FrameworkDependent
       - uses: actions/upload-artifact@v7
         with:
           name: DALIZO-windows-x64

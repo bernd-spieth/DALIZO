@@ -6,7 +6,7 @@ namespace ProxmoxSpice;
 
 public partial class MainWindow
 {
-    void AddConnectionTest(EditorDialog dialog, TextBox address, TextBox token, PasswordBox secret, TextBox proxy)
+    void AddConnectionTest(EditorDialog dialog, TextBox address, TextBox token, PasswordBox secret, TextBox proxy,CheckBox? ignoreTls=null)
     {
         var button = new Button { Content = "Test connection", HorizontalAlignment = HorizontalAlignment.Left,
             Padding = new Thickness(12, 7, 12, 7), Margin = new Thickness(0, 12, 0, 0) };
@@ -26,6 +26,7 @@ public partial class MainWindow
         token.TextChanged += (_, _) => Invalidate();
         secret.PasswordChanged += (_, _) => Invalidate();
         proxy.TextChanged += (_, _) => Invalidate();
+        if(ignoreTls!=null){ignoreTls.Checked+=(_,_)=>Invalidate();ignoreTls.Unchecked+=(_,_)=>Invalidate();}
         dialog.Closed += (_, _) => { closed = true; pending?.Cancel(); };
         button.Click += async (_, _) =>
         {
@@ -35,10 +36,10 @@ public partial class MainWindow
             report.Visibility = Visibility.Visible; report.Text = "Testing HTTPS connection, API token and VM permissions…";
             try
             {
-                using var api = new ProxmoxApi(address.Text.Trim());
+                using var api = new ProxmoxApi(address.Text.Trim(),ignoreCertificateErrors:ignoreTls?.IsChecked==true);
                 api.UseToken(token.Text.Trim(), secret.Password);
                 var result = await api.TestConnectionAsync(timeout.Token);
-                if (!closed && revision == testedRevision) report.Text = result;
+                if (!closed && revision == testedRevision) report.Text = (ignoreTls?.IsChecked==true?"Certificate validation is disabled for this server.\n\n":"")+result;
             }
             catch (Exception error)
             {
