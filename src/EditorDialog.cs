@@ -85,7 +85,7 @@ internal sealed class EditorDialog : Window
         var anchor=helpAnchor;if(anchor==null){anchor=new StackPanel{Orientation=Orientation.Horizontal};activeFields.Children.Add(anchor);helpAnchor=anchor;}
         var help=anchor.Children.OfType<Button>().FirstOrDefault(b=>b.Tag is string && b.Content as string=="?");
         if(help!=null){help.Tag=(string)help.Tag+"\n\n"+text;((TextBlock)((ToolTip)help.ToolTip).Content).Text=(string)help.Tag;return;}
-        help=new Button{Content="?",Tag=text,Width=24,Height=24,MinHeight=0,VerticalAlignment=VerticalAlignment.Center,Padding=new Thickness(0),Margin=new Thickness(6,0,0,0),ToolTip=new ToolTip{Content=new TextBlock{Text=text,TextWrapping=TextWrapping.Wrap,MaxWidth=360}}};
+        help=new Button{Content="?",Tag=text,Width=16,Height=16,FontSize=12,MinHeight=0,VerticalAlignment=VerticalAlignment.Center,Padding=new Thickness(0),Margin=new Thickness(6,0,0,0),ToolTip=new ToolTip{Content=new TextBlock{Text=text,TextWrapping=TextWrapping.Wrap,MaxWidth=360}}};
         System.Windows.Automation.AutomationProperties.SetName(help,"Show help");ToolTipService.SetShowDuration(help,60000);
         var tip=(ToolTip)help.ToolTip;tip.PlacementTarget=help;tip.Placement=System.Windows.Controls.Primitives.PlacementMode.Bottom;
         help.Click+=(_,_)=>tip.IsOpen=true;

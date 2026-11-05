@@ -1,4 +1,6 @@
-# DALIZO - inline help buttons
+# DALIZO - text-sized help icons
+
+Help buttons are now 16 × 16 pixels and aligned with the adjacent text. This is the locally reviewed and approved help-icon layout.
 
 Short examples remain visible below input fields; longer supplemental explanations use tooltips.
 
@@ -10,8 +12,8 @@ Field explanations are available through question-mark buttons and tooltips. War
 
 Two Windows x64 downloads are available:
 
-- **DALIZO-0.1.0-preview.7-win-x64.zip**: includes .NET. No separate .NET installation needed.
-- **DALIZO-0.1.0-preview.7-win-x64-no-runtime.zip**: smaller download. Install the **.NET 10 Desktop Runtime for Windows x64** from [Microsoft](https://dotnet.microsoft.com/en-us/download/dotnet/10.0) first. The SDK is not needed.
+- **DALIZO-0.1.0-preview.8-win-x64.zip**: includes .NET. No separate .NET installation needed.
+- **DALIZO-0.1.0-preview.8-win-x64-no-runtime.zip**: smaller download. Install the **.NET 10 Desktop Runtime for Windows x64** from [Microsoft](https://dotnet.microsoft.com/en-us/download/dotnet/10.0) first. The SDK is not needed.
 
 Extract the complete ZIP and start `DALIZO.exe`.
 

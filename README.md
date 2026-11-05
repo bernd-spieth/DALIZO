@@ -42,7 +42,7 @@ If a dialog fails, expand **Show error details** and use **Copy details**. Error
 Use Windows x64, PowerShell, and the .NET 10 SDK. Internet access is needed to restore NuGet packages. No Proxmox account is needed to build or run the synthetic API checks.
 
 ```powershell
-.\scripts\build.ps1 -Version 0.1.0-preview.7
+.\scripts\build.ps1 -Version 0.1.0-preview.8
 ```
 
 The script runs the API checks and creates a self-contained Windows x64 ZIP and SHA-256 checksum under `artifacts`. For the smaller `win-x64-no-runtime.zip`, run the same command with `-FrameworkDependent`. Both variants have separate ZIP names and checksums and can be built for the same version.
