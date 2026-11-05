@@ -29,7 +29,7 @@ public partial class MainWindow
             transferringFiles=true;UpdateFileTransferButton();ManagementToggle.IsChecked=false;
             using var cancel=new CancellationTokenSource();
             var dialog=new Window {Owner=this,Title="Send files to "+vm.Name,Width=520,SizeToContent=SizeToContent.Height,ResizeMode=ResizeMode.NoResize,WindowStartupLocation=WindowStartupLocation.CenterOwner,FontFamily=new System.Windows.Media.FontFamily("Segoe UI"),FontSize=13,Background=System.Windows.Media.Brushes.WhiteSmoke};
-            dialog.Resources.MergedDictionaries.Add(new ResourceDictionary {Source=new Uri("/DALIZO-Native;component/DialogStyles.xaml",UriKind.Relative)});
+            dialog.Resources.MergedDictionaries.Add(new ResourceDictionary {Source=new Uri("/DALIZO;component/DialogStyles.xaml",UriKind.Relative)});
             var panel=new StackPanel {Margin=new Thickness(22)};dialog.Content=panel;
             panel.Children.Add(new TextBlock {Text=vm.Name+" · VM "+vm.VmId,FontSize=18,FontWeight=FontWeights.SemiBold,Margin=new Thickness(0,0,0,12)});
             panel.Children.Add(new ListBox {ItemsSource=files.Select(Path.GetFileName).ToArray(),MaxHeight=180});

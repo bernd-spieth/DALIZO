@@ -19,7 +19,7 @@ jobs:
           dotnet-version: '10.0.x'
       - name: Test and package
         shell: pwsh
-        run: ./scripts/build.ps1 -Version 0.1.0-preview.3
+        run: ./scripts/build.ps1 -Version 0.1.0-preview.4
       - uses: actions/upload-artifact@v7
         with:
           name: DALIZO-windows-x64

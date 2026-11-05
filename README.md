@@ -4,7 +4,7 @@ DALIZO is a Windows desktop client for Proxmox virtual machines. It combines emb
 
 ## Download and start
 
-Download a Windows x64 ZIP from the [Releases page](https://github.com/bernd-spieth/DALIZO/releases), extract the entire ZIP and open `DALIZO-Native.exe`. Do not run the application from inside the ZIP.
+Download a Windows x64 ZIP from the [Releases page](https://github.com/bernd-spieth/DALIZO/releases), extract the entire ZIP and open `DALIZO.exe`. Do not run the application from inside the ZIP.
 
 The default release build includes the .NET runtime. These additional components are needed for the respective console types:
 
@@ -32,7 +32,7 @@ For manual setup, the chosen VM paths need `VM.Audit`, `VM.Console`, `VM.PowerMg
 Use Windows x64, PowerShell, and the .NET 10 SDK. Internet access is needed to restore NuGet packages. No Proxmox account is needed to build or run the synthetic API checks.
 
 ```powershell
-.\scripts\build.ps1 -Version 0.1.0-preview.3
+.\scripts\build.ps1 -Version 0.1.0-preview.4
 ```
 
 The script runs the API checks and creates a self-contained Windows x64 ZIP and SHA-256 checksum under `artifacts`. For a smaller build that needs the .NET Desktop Runtime installed separately, add `-FrameworkDependent`.

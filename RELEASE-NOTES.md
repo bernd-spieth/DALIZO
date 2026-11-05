@@ -1,8 +1,8 @@
-# Initial preview
+# DALIZO executable name update
 
-This preview provides embedded SPICE, noVNC and serial VM consoles; API-token login; automatic access setup and repair; VM power and settings controls; and folder-based VM navigation.
+The Windows application is now named `DALIZO.exe`. Dialog resources and documentation have been updated to match.
 
-Extract the complete ZIP and launch `DALIZO-Native.exe`.
+Extract the complete ZIP and launch `DALIZO.exe`.
 
 The .NET runtime is included. Install VirtViewer x64 for SPICE and Microsoft Edge WebView2 Runtime for noVNC/serial if they are not already installed. Those runtimes are not bundled. See README for official download links.
 

@@ -14,7 +14,7 @@ internal sealed class EditorDialog : Window
     public EditorDialog(Window owner, string title, string acceptText="Apply", string cancelText="Cancel", bool defaultAccept=true)
     {
         activeFields = fields;
-        Resources.MergedDictionaries.Add(new ResourceDictionary { Source=new Uri("/DALIZO-Native;component/DialogStyles.xaml",UriKind.Relative) });
+        Resources.MergedDictionaries.Add(new ResourceDictionary { Source=new Uri("/DALIZO;component/DialogStyles.xaml",UriKind.Relative) });
         Background=new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(241,245,249)); Foreground=new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(35,53,77));
         Owner = owner; Title = title; Width = 490; SizeToContent = SizeToContent.Height; ResizeMode = ResizeMode.NoResize; WindowStartupLocation = WindowStartupLocation.CenterOwner;
         FontFamily = new System.Windows.Media.FontFamily("Segoe UI"); FontSize = 13;
