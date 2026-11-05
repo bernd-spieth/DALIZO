@@ -21,9 +21,9 @@ public partial class MainWindow
     void AddServerAutomatically(Window? owner=null)
     {
         var dialog=new EditorDialog(owner ?? this,"Add server automatically","Continue");
-        var name=dialog.Text("Display name");dialog.Help("Example: Home lab or Production cluster.");
-        var address=dialog.Text("Proxmox address (HTTPS)");dialog.Help("Example format: https://pve.example.org:8006 — replace this with your server address.");
-        var proxy=dialog.Text("SPICE proxy (optional)");dialog.Help("Example format: pve.example.org — hostname or IP only, no protocol or port. Leave empty to use the server hostname.");
+        var name=dialog.Text("Display name");dialog.Hint("Example: Home lab or Production cluster");
+        var address=dialog.Text("Proxmox address (HTTPS)");dialog.Hint("Example: https://pve.example.org:8006");
+        var proxy=dialog.Text("SPICE proxy (optional)");dialog.Hint("Example: pve.example.org");dialog.Help("Enter a hostname or IP without a protocol or port. Leave empty to use the server hostname.");
         var remember=dialog.Check("Remember this connection on this Windows account",true);
         dialog.Help("Next, sign in as an administrator and choose which VMs DALIZO may access. DALIZO handles the login key for you.");
         var id=Guid.NewGuid();

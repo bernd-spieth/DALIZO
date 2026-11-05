@@ -1,4 +1,8 @@
-# DALIZO - error details and compact help
+# DALIZO - inline help buttons
+
+Short examples remain visible below input fields; longer supplemental explanations use tooltips.
+
+Question-mark help buttons now sit beside their related options, including Automatic/Manual server setup. Checkbox help is vertically aligned and uses a compact square button. Hovering or clicking shows a tooltip rather than a separate help dialog.
 
 Connection and dialog failures now offer expandable, copyable error details, including nested exception messages. Main-window errors can be reopened under Options > Last error details. Known credentials are redacted; review server names and paths before sharing. HTTPS certificate validation remains enabled.
 
@@ -6,8 +10,8 @@ Field explanations are available through question-mark buttons and tooltips. War
 
 Two Windows x64 downloads are available:
 
-- **DALIZO-0.1.0-preview.6-win-x64.zip**: includes .NET. No separate .NET installation needed.
-- **DALIZO-0.1.0-preview.6-win-x64-no-runtime.zip**: smaller download. Install the **.NET 10 Desktop Runtime for Windows x64** from [Microsoft](https://dotnet.microsoft.com/en-us/download/dotnet/10.0) first. The SDK is not needed.
+- **DALIZO-0.1.0-preview.7-win-x64.zip**: includes .NET. No separate .NET installation needed.
+- **DALIZO-0.1.0-preview.7-win-x64-no-runtime.zip**: smaller download. Install the **.NET 10 Desktop Runtime for Windows x64** from [Microsoft](https://dotnet.microsoft.com/en-us/download/dotnet/10.0) first. The SDK is not needed.
 
 Extract the complete ZIP and start `DALIZO.exe`.
 

@@ -24,10 +24,10 @@ public partial class MainWindow
                 var dialog=new EditorDialog(owner,"Automatic Proxmox access setup",save==null?"Create access":"Create access and add server");
                 dialog.Note("Server: "+address);
                 var admin=dialog.Text("Proxmox administrator username","root@pam");
-                dialog.Help("Use an administrator account, for example root@pam or admin@pve. Include the part after @.");
-                var password=dialog.Password("Administrator password (not saved)");
-                var all=dialog.Check("Access to all current and future VMs",true);
-                var ids=dialog.Text("VM IDs (if you did not select all VMs)");ids.IsEnabled=false; dialog.Help("Enter the VM numbers shown in Proxmox, separated by commas. Example: 101, 102.");
+                dialog.Hint("Example: root@pam or admin@pve");
+                var password=dialog.Password("Administrator password (not saved)"); dialog.Help("Your administrator password is not saved. If your account requires an authenticator code, you will be prompted for it. For security-key or browser-based sign-in, use Manual setup with an existing API token.");
+                var all=dialog.Check("Access to all current and future VMs",true); dialog.Help("DALIZO uses its own login key, not your administrator password. This key stays valid until you remove it. Existing accounts keep their current settings.");
+                var ids=dialog.Text("VM IDs (if you did not select all VMs)");ids.IsEnabled=false; dialog.Hint("Example: 101, 102 (comma-separated VM IDs)");
                 all.Checked+=(_,_)=>ids.IsEnabled=false;all.Unchecked+=(_,_)=>ids.IsEnabled=true;
                 var initial=SetupPlan.Create(true,"");
                 var planNote=new TextBlock {TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,12,0,0)};
@@ -38,8 +38,8 @@ public partial class MainWindow
                 }
                 UpdatePreview();all.Checked+=(_,_)=>UpdatePreview();all.Unchecked+=(_,_)=>UpdatePreview();
                 dialog.Note("DALIZO will be able to open consoles, start and stop the selected VMs, and change their CPU, memory, name and network settings. It can connect them to networks in all Proxmox SDN zones, but cannot change those networks.");
-                dialog.Help("DALIZO uses its own login key, not your administrator password. This key stays valid until you remove it. Existing accounts keep their current settings.");
-                dialog.Note(save==null ? "Create access sets up the connection in Proxmox. Then click Apply to save it in DALIZO. Cancelling afterwards does not undo the setup in Proxmox." : "DALIZO will set up the connection, check it and save the server."); dialog.Help("Your administrator password is not saved. If your account requires an authenticator code, you will be prompted for it. For security-key or browser-based sign-in, use Manual setup with an existing API token.");
+
+                dialog.Note(save==null ? "Create access sets up the connection in Proxmox. Then click Apply to save it in DALIZO. Cancelling afterwards does not undo the setup in Proxmox." : "DALIZO will set up the connection, check it and save the server.");
                 var reuse=dialog.Check("Reuse a suitable DALIZO account if one already exists",true);
                 dialog.Help("If a suitable account is found, you can reuse it. DALIZO creates a separate login key for this connection; other connections keep their keys.");
                 dialog.Details($"New account: {initial.User}\nRole: {initial.Role}\nToken: {initial.FullTokenId}\nThe API token has privilege separation enabled and no expiry. The account has no login password. VM permissions apply at /vms or the selected /vms/<id> paths. SDN.Use applies at /sdn/zones with inheritance for both user and token. A matching existing account can be selected below after sign-in.");

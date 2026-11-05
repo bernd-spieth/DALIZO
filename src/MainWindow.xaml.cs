@@ -134,19 +134,20 @@ public partial class MainWindow : Window
     {
         var dialog = new EditorDialog(owner ?? this, original == null ? "Add server manually" : "Edit server");
         var name = dialog.Text("Display name", original?.Name ?? "");
-        dialog.Help("Example: Home lab or Production cluster.");
+        dialog.Hint("Example: Home lab or Production cluster");
         var address = dialog.Text("Proxmox address (HTTPS)", original?.Address ?? "");
-        dialog.Help("Example format: https://pve.example.org:8006 — replace with your actual server address.");
+        dialog.Hint("Example: https://pve.example.org:8006");
         var token = dialog.Text("Token ID (user@realm!tokenname)", original?.TokenId ?? "");
-        dialog.Help("Copy the full Token ID from Proxmox. Example: dalizo@pve!windows-client. A username alone is not enough.");
+        dialog.Hint("Example: dalizo@pve!windows-client");dialog.Help("Copy the full Token ID from Proxmox. A username alone is not enough.");
         var secretValue = original != null && sessionSecrets.TryGetValue(original.Id, out var cached) ? cached : "";
         if (secretValue == "" && original?.ProtectedSecret != null) { try { secretValue = SecretProtection.Unprotect(original.ProtectedSecret); } catch { dialog.Note("The saved secret cannot be read. Please enter it again."); } }
         var secret = dialog.Password("Token secret", secretValue);
         dialog.Help("Paste the secret shown when the API token was created. This is the application’s login key, not your Proxmox password.");
         var remember = dialog.Check("Remember this connection on this Windows account", original?.ProtectedSecret != null);
-        var proxy = dialog.Text("SPICE proxy (optional, without port)", original?.Proxy ?? "");
-        dialog.Help("Example format: pve.example.org. Leave empty to use the server hostname.");
         dialog.Help("The saved login key is encrypted for your Windows account. If you do not save it, you will need it again after closing DALIZO. The server must have a trusted HTTPS certificate.");
+        var proxy = dialog.Text("SPICE proxy (optional, without port)", original?.Proxy ?? "");
+        dialog.Hint("Example: pve.example.org (blank = server hostname)");
+
         AddConnectionTest(dialog, address, token, secret, proxy);
         if(original!=null)AddAdministratorSetup(dialog,address,token,secret,remember);
         ServerProfile? result = null; string plain = "";
@@ -276,7 +277,7 @@ public partial class MainWindow : Window
             if(consoleType is "noVNC" or "Serial terminal")
             {
                 if(consoleType=="Serial terminal"&&!detected.SerialPorts.Contains(saved.SerialPort))throw new InvalidOperationException(saved.SerialPort+" is not configured as a socket. Select an available serial port in VM settings.");
-                var candidate = new NoVncHost(consoleType=="Serial terminal"?saved.SerialPort:null); vncHost=candidate; 
+                var candidate = new NoVncHost(consoleType=="Serial terminal"?saved.SerialPort:null); vncHost=candidate;
                 candidate.ErrorOccurred += error=>{if(vncHost==candidate)ReportError("Console connection failed.",error);};
                 candidate.StatusChanged += text => { if(vncHost==candidate)Status(text); RefreshConsoleSessions(); };
                 candidate.InputAvailabilityChanged += available => { if(vncHost!=candidate)return; ConsoleAvailabilityChanged(available); VncPasteButton.IsEnabled=available && ClipboardEnabled; };
@@ -308,7 +309,7 @@ public partial class MainWindow : Window
     void VncPasteClicked(object sender,RoutedEventArgs e) => Guard(()=>{ManagementToggle.IsChecked=false;vncHost?.SendClipboard();});
     void EnsureHost()
     {
-        
+
         VncPasteButton.Visibility=Visibility.Collapsed;
         if (host != null) { ConsoleArea.Child=host; host.SetExtraSharing(targetVm?.ImageClipboardEnabled==true,targetVm?.FileTransferEnabled==true);host.SetClipboardSharing(ClipboardEnabled); host.SetResizeEnabled(AutoResolutionEnabled); return; }
         var candidate = new SpiceHost(); candidate.StatusChanged += text => { if(host==candidate)Status(text); RefreshConsoleSessions(); };

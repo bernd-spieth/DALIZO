@@ -27,9 +27,11 @@ public partial class MainWindow
             try {
                 helpCheck.UpdateLayout();var helpButton=Buttons(helpCheck).Single(b=>b.Content as string=="?");
                 if(!helpCheck.HelpTexts.Contains("A helpful server explanation."))throw new Exception("Help text missing");
-                bool opened=false;
-                var scheduled=Dispatcher.BeginInvoke(DispatcherPriority.Background,new Action(()=>{var popup=Application.Current.Windows.OfType<Window>().SingleOrDefault(w=>w.Title=="Help");if(popup!=null){opened=true;popup.Close();}}));
-                helpButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));scheduled.Abort();if(!opened)throw new Exception("Question-mark help did not open");
+                helpButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                var tip=(ToolTip)helpButton.ToolTip;
+                if(!tip.IsOpen||((TextBlock)tip.Content).Text!="A helpful server explanation.")throw new Exception("Question-mark tooltip did not open");
+                if(Application.Current.Windows.OfType<Window>().Any(w=>w.Title=="Help"))throw new Exception("Help opened a dialog");
+                tip.IsOpen=false;
                 Buttons(helpCheck).Single(b=>b.Content as string=="Submit").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));helpCheck.UpdateLayout();
                 var detail=Elements(helpCheck).OfType<ErrorDetails>().Single();if(detail.Visibility!=Visibility.Visible||detail.IsExpanded)throw new Exception("Error details are missing or not collapsed");
                 detail.IsExpanded=true;helpCheck.UpdateLayout();
@@ -97,6 +99,8 @@ public partial class MainWindow
                     }
                     if(window.Title=="Add server") {
                         var radio=Elements(window).OfType<RadioButton>().Single(r=>(r.Content as string)!.StartsWith(automatic?"Automatic":"Manual"));
+                        var preview=new RenderTargetBitmap((int)window.ActualWidth,(int)window.ActualHeight,96,96,PixelFormats.Pbgra32);preview.Render(window);
+                        var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(preview));using(var file=File.Create(Path.Combine(AppContext.BaseDirectory,"setup-choice-preview.png")))encoder.Save(file);
                         radio.IsChecked=true;Buttons(window).Single(b=>b.Content as string=="Continue").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));return;
                     }
                     if(window.Title!=(automatic?"Add server automatically":"Add server manually"))return;

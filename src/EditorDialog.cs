@@ -53,7 +53,7 @@ internal sealed class EditorDialog : Window
     }
     public TextBox Text(string caption, string value = "") { Label(caption); var box = new TextBox { Text = value, Padding = new Thickness(8, 6, 8, 6) }; activeFields.Children.Add(box); return box; }
     public PasswordBox Password(string caption, string value = "") { Label(caption); var box = new PasswordBox { Password = value, Padding = new Thickness(8, 6, 8, 6) }; activeFields.Children.Add(box); return box; }
-    public CheckBox Check(string caption, bool selected) { var box = new CheckBox { Content = caption, IsChecked = selected, Margin = new Thickness(0, 14, 0, 4) }; var row=new StackPanel{Orientation=Orientation.Horizontal};row.Children.Add(box);activeFields.Children.Add(row);helpAnchor=row; return box; }
+    public CheckBox Check(string caption, bool selected) { var box = new CheckBox { Content = caption, IsChecked = selected, VerticalAlignment=VerticalAlignment.Center }; var row=new StackPanel{Orientation=Orientation.Horizontal,Margin=new Thickness(0,14,0,4)};row.Children.Add(box);activeFields.Children.Add(row);helpAnchor=row; return box; }
     public ComboBox Choice(string caption, object[] items, object? selected) { Label(caption); var box = new ComboBox { ItemsSource = items, SelectedItem = selected ?? items.FirstOrDefault(), DisplayMemberPath = "Name", Padding = new Thickness(6) };
         if(caption=="Console") {
             // Display label only: retain the stored Serial terminal value.
@@ -65,12 +65,18 @@ internal sealed class EditorDialog : Window
             box.ItemTemplate=template;
         }
         activeFields.Children.Add(box); return box; }
+    public void Hint(string text) => activeFields.Children.Add(new TextBlock { Text=text,TextWrapping=TextWrapping.Wrap,Foreground=System.Windows.Media.Brushes.SlateGray,Margin=new Thickness(0,4,0,0) });
     public void Note(string text) => activeFields.Children.Add(new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap, Foreground = System.Windows.Media.Brushes.SlateGray, Margin = new Thickness(0, 12, 0, 0) });
     public void Details(string text) => activeFields.Children.Add(new Expander {
         Header="Technical details", IsExpanded=false, Margin=new Thickness(0,12,0,0),
         Content=new TextBlock {Text=text,TextWrapping=TextWrapping.Wrap,Margin=new Thickness(8)}
     });
-    public void AddField(UIElement field) {activeFields.Children.Add(field);helpAnchor=null;}
+    public void AddField(UIElement field) {
+        if(field is RadioButton option){
+            var row=new StackPanel{Orientation=Orientation.Horizontal,Margin=option.Margin};option.Margin=new Thickness(0);option.VerticalAlignment=VerticalAlignment.Center;
+            row.Children.Add(option);activeFields.Children.Add(row);helpAnchor=row;
+        }else activeFields.Children.Add(field);
+    }
     public ListBox List(string caption, object[] items) { Label(caption); var list = new ListBox { ItemsSource = items, DisplayMemberPath = "Caption", SelectionMode = SelectionMode.Extended, Height = 280 }; activeFields.Children.Add(list); return list; }
     void Label(string text) {var row=new StackPanel{Orientation=Orientation.Horizontal,Margin=new Thickness(0,10,0,5)};row.Children.Add(new TextBlock{Text=text,VerticalAlignment=VerticalAlignment.Center});activeFields.Children.Add(row);helpAnchor=row;}
     static IEnumerable<PasswordBox> Passwords(DependencyObject root){if(root is PasswordBox box)yield return box;foreach(var child in LogicalTreeHelper.GetChildren(root).OfType<DependencyObject>())foreach(var nested in Passwords(child))yield return nested;}
@@ -79,9 +85,14 @@ internal sealed class EditorDialog : Window
         var anchor=helpAnchor;if(anchor==null){anchor=new StackPanel{Orientation=Orientation.Horizontal};activeFields.Children.Add(anchor);helpAnchor=anchor;}
         var help=anchor.Children.OfType<Button>().FirstOrDefault(b=>b.Tag is string && b.Content as string=="?");
         if(help!=null){help.Tag=(string)help.Tag+"\n\n"+text;((TextBlock)((ToolTip)help.ToolTip).Content).Text=(string)help.Tag;return;}
-        help=new Button{Content="?",Tag=text,Width=24,Height=24,Padding=new Thickness(0),Margin=new Thickness(6,0,0,0),ToolTip=new ToolTip{Content=new TextBlock{Text=text,TextWrapping=TextWrapping.Wrap,MaxWidth=360}}};
+        help=new Button{Content="?",Tag=text,Width=24,Height=24,MinHeight=0,VerticalAlignment=VerticalAlignment.Center,Padding=new Thickness(0),Margin=new Thickness(6,0,0,0),ToolTip=new ToolTip{Content=new TextBlock{Text=text,TextWrapping=TextWrapping.Wrap,MaxWidth=360}}};
         System.Windows.Automation.AutomationProperties.SetName(help,"Show help");ToolTipService.SetShowDuration(help,60000);
-        help.Click+=(_,_)=>{var window=new Window{Owner=this,Title="Help",Width=440,SizeToContent=SizeToContent.Height,MaxHeight=SystemParameters.WorkArea.Height-80,WindowStartupLocation=WindowStartupLocation.CenterOwner};var panel=new DockPanel{Margin=new Thickness(18)};var close=new Button{Content="Close",IsCancel=true,IsDefault=true,HorizontalAlignment=HorizontalAlignment.Right,Margin=new Thickness(0,12,0,0),Padding=new Thickness(12,5,12,5)};close.Click+=(_,_)=>window.Close();DockPanel.SetDock(close,Dock.Bottom);panel.Children.Add(close);panel.Children.Add(new ScrollViewer{MaxHeight=440,VerticalScrollBarVisibility=ScrollBarVisibility.Auto,Content=new TextBlock{Text=(string)help.Tag,TextWrapping=TextWrapping.Wrap}});window.Content=panel;window.ShowDialog();};
+        var tip=(ToolTip)help.ToolTip;tip.PlacementTarget=help;tip.Placement=System.Windows.Controls.Primitives.PlacementMode.Bottom;
+        help.Click+=(_,_)=>tip.IsOpen=true;
+        help.GotKeyboardFocus+=(_,_)=>tip.IsOpen=true;
+        help.LostKeyboardFocus+=(_,_)=>tip.IsOpen=false;
+        help.MouseLeave+=(_,_)=>tip.IsOpen=false;
+        Closed+=(_,_)=>tip.IsOpen=false;
         anchor.Children.Add(help);
     }
     public static bool Confirm(Window owner,string message,string title)
