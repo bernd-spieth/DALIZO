@@ -31,12 +31,18 @@ Automatic setup grants console access, status, power controls, CPU, memory, name
 
 For manual setup, the chosen VM paths need `VM.Audit`, `VM.Console`, `VM.PowerMgmt`, `VM.Config.CPU`, `VM.Config.Memory`, `VM.Config.Options` and `VM.Config.Network`. All-VM access uses `/vms` with propagation; individual access uses `/vms/<id>`. Network selection requires `SDN.Use` on the desired SDN zones, or `/sdn/zones` with propagation for all zones. Privilege-separated tokens need matching permissions for both the user and token.
 
+## Help and connection errors
+
+Use the **?** next to a field to see its explanation. Hover for a tooltip or click for a help window. Warnings about changes remain visible.
+
+If a dialog fails, expand **Show error details** and use **Copy details**. Errors from the main window are available under **Options > Last error details**. Details include nested causes, so an SSL error can show the underlying certificate or connection error. Known credentials are redacted; review server names and paths before sharing. Certificate validation remains enabled.
+
 ## Build from source
 
 Use Windows x64, PowerShell, and the .NET 10 SDK. Internet access is needed to restore NuGet packages. No Proxmox account is needed to build or run the synthetic API checks.
 
 ```powershell
-.\scripts\build.ps1 -Version 0.1.0-preview.5
+.\scripts\build.ps1 -Version 0.1.0-preview.6
 ```
 
 The script runs the API checks and creates a self-contained Windows x64 ZIP and SHA-256 checksum under `artifacts`. For the smaller `win-x64-no-runtime.zip`, run the same command with `-FrameworkDependent`. Both variants have separate ZIP names and checksums and can be built for the same version.

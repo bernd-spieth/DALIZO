@@ -220,6 +220,12 @@ using(var currentNetworkApi=new ProxmoxApi("https://pve.example.test",new Fake(r
     Check(await currentNetworkApi.CanEditNetworkAsync(101),"Non-propagating network privilege ignored");
 }
 Console.WriteLine("PASS: network link/bridge parsing, changed-only editing, unknown/VLAN/MAC/firewall attribute preservation, normalized readback, digest, network-key and bridge validation, current config endpoint and network permission.");
+var nestedError=new System.Net.Http.HttpRequestException("SSL connection failed: PVEAPIToken=user@pve!client=hidden-token",new System.Security.Authentication.AuthenticationException("Certificate chain: UntrustedRoot; password=hidden-password; secret-in-message"));
+var readable=ErrorText.Format(nestedError,new[]{"secret-in-message"});
+Check(readable.Contains("UntrustedRoot")&&readable.Contains("AuthenticationException")&&!readable.Contains("hidden-token")&&!readable.Contains("hidden-password")&&!readable.Contains("secret-in-message"),"Inner exception or redaction failed");
+var aggregateDetails=ErrorText.Format(new AggregateException(new Exception("first cause"),new Exception("second cause")));
+Check(aggregateDetails.Contains("first cause")&&aggregateDetails.Contains("second cause"),"Aggregate causes lost");
+Console.WriteLine("PASS: nested TLS/aggregate error causes and credential redaction.");
 await SetupChecks.Run();
 await LifecycleChecks.Run();
 await SerialChecks.Run();

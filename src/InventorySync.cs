@@ -35,7 +35,7 @@ public partial class MainWindow
             if(added>0)Status($"{added} VMs added automatically · {server.Name}");
         }
         catch(OperationCanceledException) when(closing) { }
-        catch { if(!closing)Status("Automatic VM sync failed. Existing entries are retained; check the connection and token permissions."); }
+        catch(Exception error) { if(!closing)ReportError("Automatic VM sync failed. Existing entries are retained.",error); }
     }
     async void RefreshInventoryClicked(object sender,RoutedEventArgs e)
     {

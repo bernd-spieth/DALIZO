@@ -13,13 +13,13 @@ public partial class MainWindow
         var report = new TextBox { IsReadOnly = true, TextWrapping = TextWrapping.Wrap, MaxHeight = 230,
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Margin = new Thickness(0, 8, 0, 0),
             Visibility = Visibility.Collapsed };
-        dialog.AddField(button); dialog.AddField(report);
+        var details=new ErrorDetails(); dialog.AddField(button); dialog.AddField(report);dialog.AddField(details);
         CancellationTokenSource? pending = null;
         bool closed = false;
         int revision = 0;
         void Invalidate()
         {
-            revision++; pending?.Cancel();
+            revision++; pending?.Cancel();details.Clear();
             if (report.Visibility == Visibility.Visible) report.Text = "Settings changed. Test the connection again.";
         }
         address.TextChanged += (_, _) => Invalidate();
@@ -31,7 +31,7 @@ public partial class MainWindow
         {
             var testedRevision = revision;
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-            pending = timeout; button.IsEnabled = false;
+            pending = timeout; button.IsEnabled = false;details.Clear();
             report.Visibility = Visibility.Visible; report.Text = "Testing HTTPS connection, API token and VM permissions…";
             try
             {
@@ -42,9 +42,11 @@ public partial class MainWindow
             }
             catch (Exception error)
             {
-                if (!closed && revision == testedRevision)
+                if (!closed && revision == testedRevision) {
+                    details.Set(error,new[]{secret.Password,token.Text});
                     report.Text = error is OperationCanceledException ? "Connection test timed out. Try again." :
-                        "Connection or permission check failed. " + error.Message;
+                        "Connection or permission check failed. Open the error details below.";
+                }
             }
             finally { pending = null; if (!closed) button.IsEnabled = true; }
         };

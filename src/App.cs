@@ -31,7 +31,7 @@ internal static class App
             }
             var store = new ProfileStore(file);
             var app = new Application();
-            app.DispatcherUnhandledException += (_, e) => { if (smoke) File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "smoke-error.txt"), e.Exception.ToString()); else MessageBox.Show("The action could not be completed. " + e.Exception.Message, "DALIZO"); e.Handled = true; };
+            app.DispatcherUnhandledException += (_, e) => { if (smoke) File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "smoke-error.txt"), e.Exception.ToString()); else ErrorDetails.Show(Application.Current?.MainWindow,"The action could not be completed.",e.Exception); e.Handled = true; };
             int result = app.Run(new MainWindow(store, smoke, liveVm));
             if (smoke && File.Exists(Path.Combine(AppContext.BaseDirectory,"smoke-error.txt"))) return 1;
             if (liveVm != null && (!File.Exists(Path.Combine(AppContext.BaseDirectory,"live-render-result.txt")) || !File.ReadAllText(Path.Combine(AppContext.BaseDirectory,"live-render-result.txt")).StartsWith("PASS:"))) return 1;
@@ -40,7 +40,7 @@ internal static class App
         catch (Exception e)
         {
             if (smoke) File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "smoke-error.txt"), e.ToString());
-            else MessageBox.Show("Startup failed. Existing profiles will not be overwritten.\n" + e.Message, "DALIZO");
+            else ErrorDetails.Show(null,"Startup failed. Existing profiles will not be overwritten.",e);
             return 1;
         }
     }

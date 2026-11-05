@@ -16,14 +16,14 @@ public partial class MainWindow
         folder.DisplayMemberPath="";folder.IsEditable=true;folder.Text=vm.Folder;
         var console = dialog.Choice("Console", new object[] { "Auto", "SPICE", "noVNC", "Serial terminal" }, vm.ConsoleType);
         console.DisplayMemberPath = "";
-        dialog.Note("Auto selects SPICE for QXL displays, otherwise noVNC. Changing the console type closes its current session.");
+        dialog.Help("Auto selects SPICE for QXL displays, otherwise noVNC. Changing the console type closes its current session.");
         var serial=dialog.Choice("Serial port",new object[]{"serial0","serial1","serial2","serial3"},vm.SerialPort);serial.DisplayMemberPath="";
         serial.IsEnabled=vm.ConsoleType=="Serial terminal";
-        dialog.Note("Serial terminal requires a socket-backed serial device in Proxmox and a login/getty in the guest. DALIZO does not change guest boot or login settings.");
+        dialog.Help("Serial terminal requires a socket-backed serial device in Proxmox and a login/getty in the guest. DALIZO does not change guest boot or login settings.");
         var clipboard = dialog.Check("Share clipboard with this VM", vm.ClipboardEnabled);
         var imageClipboard=dialog.Check("Share images through SPICE clipboard (PNG)",vm.ImageClipboardEnabled);
         var fileTransfer=dialog.Check("Allow sending files to this VM through SPICE",vm.FileTransferEnabled);
-        dialog.Note("Images and file sending require a SPICE connection and guest-agent support. File sending is host to VM only; folders are not supported.");
+        dialog.Help("Images and file sending require a SPICE connection and guest-agent support. File sending is host to VM only; folders are not supported.");
         var clipboardInfo = new TextBlock { TextWrapping = TextWrapping.Wrap, Foreground = Brushes.SlateGray };
         dialog.AddField(clipboardInfo);
         var resolution = dialog.Check("Auto resolution", vm.AutoResolution);
@@ -57,7 +57,7 @@ public partial class MainWindow
         ConsoleFeaturesChanged += RefreshSupport;
         dialog.Closed += (_, _) => ConsoleFeaturesChanged -= RefreshSupport;
         RefreshSupport();
-        dialog.Note("Clipboard and automatic resolution require guest support. SPICE uses the guest SPICE agent and compatible display drivers. noVNC requests guest resizing when supported by the server and scales the image as a fallback.");
+        dialog.Help("Clipboard and automatic resolution require guest support. SPICE uses the guest SPICE agent and compatible display drivers. noVNC requests guest resizing when supported by the server and scales the image as a fallback.");
         return () => {
             var updated = vm with { Name = name.Text.Trim(), Folder = folder.Text.Trim(), ConsoleType = (string)console.SelectedItem, ExplicitConsole = true,
                 ClipboardEnabled = clipboard.IsChecked == true, ImageClipboardEnabled=imageClipboard.IsChecked==true, FileTransferEnabled=fileTransfer.IsChecked==true, AutoResolution = resolution.IsChecked == true, SerialPort=(string)serial.SelectedItem };

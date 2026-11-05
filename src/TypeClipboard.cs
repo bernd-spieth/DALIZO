@@ -40,7 +40,7 @@ public partial class MainWindow
                 Status("Clipboard text sent as keystrokes. No Enter was appended.");
             } catch(OperationCanceledException){Status("Typing stopped. Already sent characters remain in the guest.");}
             finally {typingCancellation=null;UpdateConnectButtons();}
-        } catch(Exception error){Status("Could not type clipboard text: "+error.Message);}
+        } catch(Exception error){ReportError("Could not type clipboard text:",error);}
     }
 }
 

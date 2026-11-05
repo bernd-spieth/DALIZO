@@ -51,7 +51,7 @@ public sealed partial class ProxmoxApi
         socket.Options.KeepAliveInterval=TimeSpan.FromSeconds(20);
         try { await socket.ConnectAsync(VncWebSocketUri(vm,ticket),ct); return socket; }
         catch(OperationCanceledException) { socket.Dispose(); throw; }
-        catch { socket.Dispose(); throw new InvalidOperationException("noVNC WebSocket rejected. Check the HTTPS certificate, VM.Console permissions, WebSocket proxy and API-token support in your Proxmox version."); }
+        catch(Exception error) { socket.Dispose(); throw new InvalidOperationException("noVNC WebSocket rejected. Check the HTTPS certificate, VM.Console permissions, WebSocket proxy and API-token support in your Proxmox version.",error); }
     }
 }
 

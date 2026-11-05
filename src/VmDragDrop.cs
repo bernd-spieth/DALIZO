@@ -70,7 +70,7 @@ public partial class MainWindow
         try {
             MoveVmToFolder(id,folder!);e.Effects=DragDropEffects.Move;
             Status("VM moved to "+(folder!.Length==0?"Ungrouped":folder)+". Saved locally.");
-        } catch(Exception error){Status("Could not move VM: "+error.Message);}
+        } catch(Exception error){ReportError("Could not move VM:",error);}
     }
     void VmListDragOver(object sender,DragEventArgs e){e.Effects=DragDropEffects.None;e.Handled=true;}
     void VmDragScroll(object sender,DragEventArgs e)

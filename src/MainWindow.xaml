@@ -82,7 +82,7 @@
   <TextBlock x:Name="ConsoleSubtitle" Visibility="Collapsed" Text="No active connection"/>
 <Popup x:Name="OptionsPopup" IsOpen="{Binding IsChecked, ElementName=OptionsToggle, Mode=TwoWay}" PlacementTarget="{Binding ElementName=OptionsToggle}" Placement="Bottom" StaysOpen="False" AllowsTransparency="True">
    <Border Style="{StaticResource MenuSurface}">
-    <StackPanel Width="210"><Button Style="{StaticResource MenuCommand}" x:Name="ManageServersOption" Content="Manage servers…" Click="ManageServersClicked" Margin="0"/></StackPanel>
+    <StackPanel Width="210"><Button Style="{StaticResource MenuCommand}" x:Name="ManageServersOption" Content="Manage servers…" Click="ManageServersClicked" Margin="0"/><Button Style="{StaticResource MenuCommand}" x:Name="LastErrorOption" Content="Last error details…" Click="ShowLastError" IsEnabled="False"/></StackPanel>
    </Border>
   </Popup>
   <Popup IsOpen="{Binding IsChecked, ElementName=ManagementToggle, Mode=TwoWay}" PlacementTarget="{Binding ElementName=ManagementToggle}" Placement="Bottom" StaysOpen="False" AllowsTransparency="True">

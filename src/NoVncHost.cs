@@ -30,6 +30,7 @@ internal sealed partial class NoVncHost : Border, IDisposable
     public string TransportStats => $"received={receivedBytes}; sent={sentBytes}; pointerMessages={pointerMessages}";
     public bool CanSendKeys { get; private set; }
     public event Action<string>? StatusChanged;
+    public event Action<Exception>? ErrorOccurred;
     public event Action<bool>? InputAvailabilityChanged;
     public event Action? ReleaseFocus;
     public bool IsSerial {get;}
@@ -147,20 +148,22 @@ internal sealed partial class NoVncHost : Border, IDisposable
             }
         }
         catch(OperationCanceledException) when(lifetime.IsCancellationRequested) { }
-        catch { if(!lifetime.IsCancellationRequested)Fail(Label+" data connection interrupted. Please reconnect."); }
+        catch(Exception error) { if(!lifetime.IsCancellationRequested)Fail(Label+" data connection interrupted. Please reconnect.",error); }
     }
     async Task SendLoop()
     {
         try { await foreach(var bytes in outgoing.Reader.ReadAllAsync(lifetime.Token)) { await socket!.SendAsync(bytes.AsMemory(),WebSocketMessageType.Binary,true,lifetime.Token); sentBytes+=bytes.Length; if(bytes.Length==6 && bytes[0]==5)pointerMessages++; } }
         catch(OperationCanceledException) when(lifetime.IsCancellationRequested) { }
-        catch { if(!lifetime.IsCancellationRequested)Fail("The noVNC input connection was interrupted. Please reconnect."); }
+        catch(Exception error) { if(!lifetime.IsCancellationRequested)Fail("The noVNC input connection was interrupted. Please reconnect.",error); }
     }
-    void Fail(string message)
+    void Fail(string message,Exception? cause=null)
     {
         if(disposed||lifetime.IsCancellationRequested)return;
-        connected.TrySetException(new InvalidOperationException(message));
+        var failure=new InvalidOperationException(message,cause);
+        connected.TrySetException(failure);
         Disconnect();
         StatusChanged?.Invoke(message);
+        ErrorOccurred?.Invoke(failure);
     }
     async Task SerialKeepAlive(){try{using var tick=new PeriodicTimer(TimeSpan.FromSeconds(20));while(await tick.WaitForNextTickAsync(lifetime.Token)){if(!outgoing.Writer.TryWrite(new byte[]{50})){Fail("Serial input buffer is full.");return;}}}catch(OperationCanceledException){}}
     public bool SessionOpen => !disposed && !lifetime.IsCancellationRequested && connected.Task.IsCompletedSuccessfully;

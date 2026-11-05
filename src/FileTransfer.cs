@@ -35,6 +35,7 @@ public partial class MainWindow
             panel.Children.Add(new ListBox {ItemsSource=files.Select(Path.GetFileName).ToArray(),MaxHeight=180});
             var status=new TextBlock {Text="Send these files to the VM? The guest agent chooses the destination. Existing files are not explicitly overwritten by DALIZO.",TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,14,0,12)};panel.Children.Add(status);
             var bar=new ProgressBar {Minimum=0,Maximum=100,Height=8,Margin=new Thickness(0,0,0,18)};panel.Children.Add(bar);
+            var details=new ErrorDetails();panel.Children.Add(details);
             var actions=new StackPanel {Orientation=Orientation.Horizontal,HorizontalAlignment=HorizontalAlignment.Right};panel.Children.Add(actions);
             var close=new Button {Content="Cancel",Margin=new Thickness(0,0,10,0)};var send=new Button {Content="Send files",Style=(Style)dialog.FindResource("PrimaryDialogButton")};actions.Children.Add(close);actions.Children.Add(send);
             bool running=false,finished=false;
@@ -46,12 +47,12 @@ public partial class MainWindow
                     var progress=new Progress<(long Current,long Total)>(p=>{if(!running||cancel.IsCancellationRequested)return;bar.IsIndeterminate=p.Total<=0;if(p.Total>0)bar.Value=Math.Clamp(100.0*p.Current/p.Total,0,100);status.Text=$"{p.Current:N0} / {p.Total:N0} bytes sent";});
                     await source.SendFilesAsync(files,progress,cancel.Token);
                     status.Text="Files sent successfully. Check the Desktop or Downloads folder inside the VM.";bar.Value=100;
-                }catch(Exception error){status.Text=cancel.IsCancellationRequested?"Transfer cancelled. Partial files may remain in the guest.":"Transfer failed: "+error.Message;}
+                }catch(Exception error){if(!cancel.IsCancellationRequested){ReportError("File transfer failed.",error);details.Set(error,sessionSecrets.Values);}status.Text=cancel.IsCancellationRequested?"Transfer cancelled. Partial files may remain in the guest.":"Transfer failed. Open the error details below.";}
                 finally{running=false;finished=true;bar.IsIndeterminate=false;close.IsEnabled=true;close.Content="Close";}
             };
             dialog.ShowDialog();
             if(host==source&&HasDisplayedConsole)source.FocusConsole();
-        }catch(Exception error){Status("File transfer: "+error.Message);}
+        }catch(Exception error){ReportError("File transfer failed.",error);}
         finally{transferringFiles=false;UpdateFileTransferButton();}
         await Task.CompletedTask;
     }

@@ -127,26 +127,26 @@ public partial class MainWindow : Window
     void FilterChanged(object sender, TextChangedEventArgs e) => Filter();
     void Commit(WorkspaceData next, Guid? vm = null, Guid? server = null) { store.Save(next); data = next; Refresh(vm, server); }
     WorkspaceData Snapshot() => new(1, data.Servers.ToList(), data.Vms.ToList());
-    void Guard(Action action) { try { action(); } catch (Exception e) { Status("Action failed: " + e.Message); } }
+    void Guard(Action action) { try { action(); } catch (Exception e) { ReportError("Action failed.",e); } }
     void OptionsOpened(object sender,RoutedEventArgs e) { guestKeysMenu.IsOpen=false; ShowSidebar(false); HideStatusNotification(); ManagementToggle.IsChecked=false; }
     void EditServer(object sender, RoutedEventArgs e) => Guard(() => { if (Servers.SelectedItem is ServerProfile s) EditServerProfile(s); });
     void EditServerProfile(ServerProfile? original,Window? owner=null)
     {
         var dialog = new EditorDialog(owner ?? this, original == null ? "Add server manually" : "Edit server");
         var name = dialog.Text("Display name", original?.Name ?? "");
-        dialog.Note("Example: Home lab or Production cluster.");
+        dialog.Help("Example: Home lab or Production cluster.");
         var address = dialog.Text("Proxmox address (HTTPS)", original?.Address ?? "");
-        dialog.Note("Example format: https://pve.example.org:8006 — replace with your actual server address.");
+        dialog.Help("Example format: https://pve.example.org:8006 — replace with your actual server address.");
         var token = dialog.Text("Token ID (user@realm!tokenname)", original?.TokenId ?? "");
-        dialog.Note("Copy the full Token ID from Proxmox. Example: dalizo@pve!windows-client. A username alone is not enough.");
+        dialog.Help("Copy the full Token ID from Proxmox. Example: dalizo@pve!windows-client. A username alone is not enough.");
         var secretValue = original != null && sessionSecrets.TryGetValue(original.Id, out var cached) ? cached : "";
         if (secretValue == "" && original?.ProtectedSecret != null) { try { secretValue = SecretProtection.Unprotect(original.ProtectedSecret); } catch { dialog.Note("The saved secret cannot be read. Please enter it again."); } }
         var secret = dialog.Password("Token secret", secretValue);
-        dialog.Note("Paste the secret shown when the API token was created. This is the application’s login key, not your Proxmox password.");
+        dialog.Help("Paste the secret shown when the API token was created. This is the application’s login key, not your Proxmox password.");
         var remember = dialog.Check("Remember this connection on this Windows account", original?.ProtectedSecret != null);
         var proxy = dialog.Text("SPICE proxy (optional, without port)", original?.Proxy ?? "");
-        dialog.Note("Example format: pve.example.org. Leave empty to use the server hostname.");
-        dialog.Note("The saved login key is encrypted for your Windows account. If you do not save it, you will need it again after closing DALIZO. The server must have a trusted HTTPS certificate.");
+        dialog.Help("Example format: pve.example.org. Leave empty to use the server hostname.");
+        dialog.Help("The saved login key is encrypted for your Windows account. If you do not save it, you will need it again after closing DALIZO. The server must have a trusted HTTPS certificate.");
         AddConnectionTest(dialog, address, token, secret, proxy);
         if(original!=null)AddAdministratorSetup(dialog,address,token,secret,remember);
         ServerProfile? result = null; string plain = "";
@@ -206,7 +206,7 @@ public partial class MainWindow : Window
         var cts = new CancellationTokenSource(); operation = cts;
         try { await action(cts.Token); }
         catch (OperationCanceledException) { SetConsoleFocus(false); Status("Request cancelled or timed out. Server actions already submitted may continue."); }
-        catch (Exception e) { SetConsoleFocus(false); Status(e is HttpRequestException ? "API connection failed. Check the address, HTTPS certificate and token permissions. " + (e.InnerException == null ? e.Message : "") : "Connection failed: " + e.Message); }
+        catch (Exception e) { SetConsoleFocus(false); ReportError("Connection failed.",e); }
         finally { if (operation == cts) operation = null; cts.Dispose(); busy = false; if (!closing) OptionsToggle.IsEnabled = ServerActions.IsEnabled = VmList.IsEnabled = true; UpdateRuntimeHeader(); }
     }
     async void VmKeyDown(object sender, KeyEventArgs e) { if (e.Key == Key.Enter) { e.Handled = true; await ConnectSelected(); } }
@@ -277,6 +277,7 @@ public partial class MainWindow : Window
             {
                 if(consoleType=="Serial terminal"&&!detected.SerialPorts.Contains(saved.SerialPort))throw new InvalidOperationException(saved.SerialPort+" is not configured as a socket. Select an available serial port in VM settings.");
                 var candidate = new NoVncHost(consoleType=="Serial terminal"?saved.SerialPort:null); vncHost=candidate; 
+                candidate.ErrorOccurred += error=>{if(vncHost==candidate)ReportError("Console connection failed.",error);};
                 candidate.StatusChanged += text => { if(vncHost==candidate)Status(text); RefreshConsoleSessions(); };
                 candidate.InputAvailabilityChanged += available => { if(vncHost!=candidate)return; ConsoleAvailabilityChanged(available); VncPasteButton.IsEnabled=available && ClipboardEnabled; };
                 candidate.ReleaseFocus += () => { if(vncHost==candidate)SidebarButton.Focus(); };

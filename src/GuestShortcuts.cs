@@ -72,6 +72,6 @@ public partial class MainWindow
             else if(vncHost is {CanSendKeys:true,IsSerial:false})vncHost.SendKeys(shortcut.Keys);
             else return;
             Status(shortcut.Label+" sent to the VM.");
-        } catch(Exception error) {Status("Could not send the key combination: "+error.Message);}
+        } catch(Exception error) {ReportError("Could not send the key combination:",error);}
     }
 }

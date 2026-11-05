@@ -11,9 +11,9 @@ public partial class MainWindow
         dialog.Note("Server: "+server.Address+"\nToken: "+server.TokenId);
         dialog.Note("Check what this connection is allowed to do and add missing permissions. You can review the changes first. Your saved connection and existing login key stay the same.");
         var admin=dialog.Text("Proxmox administrator username","root@pam");
-        dialog.Note("Use an administrator account, for example root@pam or admin@pve.");
+        dialog.Help("Use an administrator account, for example root@pam or admin@pve.");
         var password=dialog.Password("Administrator password (not saved)");
-        dialog.Note("If your account requires an authenticator code, you will be prompted for it. If DALIZO cannot safely identify the account settings, it will ask you to have an administrator check them.");
+        dialog.Help("If your account requires an authenticator code, you will be prompted for it. If DALIZO cannot safely identify the account settings, it will ask you to have an administrator check them.");
         bool repaired=false;
         dialog.ValidateAsync=async()=>{
             using var api=new ProxmoxSetup(server.Address);

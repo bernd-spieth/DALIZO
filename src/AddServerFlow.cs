@@ -11,21 +11,21 @@ public partial class MainWindow
         choice.Note("How would you like to add this Proxmox server?");
         var automatic=new RadioButton {Content="Automatic — sign in as an administrator",IsChecked=true,Margin=new Thickness(0,14,0,0),GroupName="SetupMode"};
         choice.AddField(automatic);
-        choice.Note("DALIZO sets up its own access to Proxmox and saves the server for you.");
+        choice.Help("DALIZO sets up its own access to Proxmox and saves the server for you.");
         var manual=new RadioButton {Content="Manual — use an existing API token",Margin=new Thickness(0,14,0,0),GroupName="SetupMode"};
         choice.AddField(manual);
-        choice.Note("Use an API token you already have. An API token is a login key for applications.");
+        choice.Help("Use an API token you already have. An API token is a login key for applications.");
         if(choice.ShowDialog()!=true)return;
         if(automatic.IsChecked==true)AddServerAutomatically(owner);else EditServerProfile(null,owner);
     }
     void AddServerAutomatically(Window? owner=null)
     {
         var dialog=new EditorDialog(owner ?? this,"Add server automatically","Continue");
-        var name=dialog.Text("Display name");dialog.Note("Example: Home lab or Production cluster.");
-        var address=dialog.Text("Proxmox address (HTTPS)");dialog.Note("Example format: https://pve.example.org:8006 — replace this with your server address.");
-        var proxy=dialog.Text("SPICE proxy (optional)");dialog.Note("Example format: pve.example.org — hostname or IP only, no protocol or port. Leave empty to use the server hostname.");
+        var name=dialog.Text("Display name");dialog.Help("Example: Home lab or Production cluster.");
+        var address=dialog.Text("Proxmox address (HTTPS)");dialog.Help("Example format: https://pve.example.org:8006 — replace this with your server address.");
+        var proxy=dialog.Text("SPICE proxy (optional)");dialog.Help("Example format: pve.example.org — hostname or IP only, no protocol or port. Leave empty to use the server hostname.");
         var remember=dialog.Check("Remember this connection on this Windows account",true);
-        dialog.Note("Next, sign in as an administrator and choose which VMs DALIZO may access. DALIZO handles the login key for you.");
+        dialog.Help("Next, sign in as an administrator and choose which VMs DALIZO may access. DALIZO handles the login key for you.");
         var id=Guid.NewGuid();
         dialog.Validate=()=> {
             var draft=new ServerProfile(id,name.Text.Trim(),address.Text.Trim(),"pending@pve!client",proxy.Text.Trim(),null);

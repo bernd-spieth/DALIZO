@@ -18,6 +18,28 @@ public partial class MainWindow
                 foreach(var nested in Buttons(child))yield return nested;
             }
         }
+        Exception? helpFailure=null;
+        var helpCheck=new EditorDialog(this,"Help and errors check","Submit");
+        var input=helpCheck.Text("Server");helpCheck.Help("A helpful server explanation.");
+        var hiddenPassword=helpCheck.Password("Password","private-test-password");
+        helpCheck.Validate=()=>{hiddenPassword.Clear();throw new System.Net.Http.HttpRequestException("SSL failed",new System.Security.Authentication.AuthenticationException("UntrustedRoot private-test-password"));};
+        helpCheck.Loaded+=(_,_)=>{
+            try {
+                helpCheck.UpdateLayout();var helpButton=Buttons(helpCheck).Single(b=>b.Content as string=="?");
+                if(!helpCheck.HelpTexts.Contains("A helpful server explanation."))throw new Exception("Help text missing");
+                bool opened=false;
+                var scheduled=Dispatcher.BeginInvoke(DispatcherPriority.Background,new Action(()=>{var popup=Application.Current.Windows.OfType<Window>().SingleOrDefault(w=>w.Title=="Help");if(popup!=null){opened=true;popup.Close();}}));
+                helpButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));scheduled.Abort();if(!opened)throw new Exception("Question-mark help did not open");
+                Buttons(helpCheck).Single(b=>b.Content as string=="Submit").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));helpCheck.UpdateLayout();
+                var detail=Elements(helpCheck).OfType<ErrorDetails>().Single();if(detail.Visibility!=Visibility.Visible||detail.IsExpanded)throw new Exception("Error details are missing or not collapsed");
+                detail.IsExpanded=true;helpCheck.UpdateLayout();
+                var errorText=Elements(detail).OfType<TextBox>().Single().Text;
+                if(!errorText.Contains("UntrustedRoot")||errorText.Contains("private-test-password"))throw new Exception("Nested cause lost or cleared password exposed");
+                detail.Clear();if(detail.Visibility!=Visibility.Collapsed)throw new Exception("Old error details retained");
+            }catch(Exception error){helpFailure=error;}
+            helpCheck.Close();
+        };
+        helpCheck.ShowDialog();if(helpFailure!=null)throw helpFailure;
         var gate=new TaskCompletionSource<bool>();int submissions=0;
         var asyncDialog=new EditorDialog(this,"Async dialog check","Submit");
         asyncDialog.ValidateAsync=async()=> {submissions++;return await gate.Task;};
@@ -79,7 +101,7 @@ public partial class MainWindow
                     }
                     if(window.Title!=(automatic?"Add server automatically":"Add server manually"))return;
                     modeTimer.Stop();
-                    var labels=string.Join("\n",Elements(window).OfType<TextBlock>().Select(t=>t.Text));
+                    var labels=string.Join("\n",Elements(window).OfType<TextBlock>().Select(t=>t.Text).Concat(window.HelpTexts));
                     if(labels.Contains("Token secret") == automatic)throw new Exception("Wrong fields shown for selected server setup mode.");
                     if(!labels.Contains("https://pve.example.org:8006"))throw new Exception("Address example missing.");
                     if(!automatic&&!labels.Contains("dalizo@pve!windows-client"))throw new Exception("Token ID example missing.");
