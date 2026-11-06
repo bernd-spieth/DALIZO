@@ -263,11 +263,12 @@ public partial class MainWindow : Window
         if(!fresh && consoles.TryGetValue(saved.Id,out var existing) && existing.Open) { RestoreConsole(saved); ShowSidebar(false);return; }
         CloseConsole(saved.Id);
         var server = data.Servers.First(s => s.Id == saved.ServerId); var secret = GetSecret(server); if (secret == null) return;
-        await RunOperation(async ct =>
+        await RunOperation(async ct => {
+            await TlsPolicy.Connect(server.IgnoreCertificateErrors,async skip =>
         {
             SetTarget(saved); DisconnectConsole(); ConsoleTitle.Text = saved.Name; ConsoleSubtitle.Text = $"{server.Name} · VM {saved.VmId} · {ConsoleLabel(saved)}";
             Status("Resolving the VM and its current cluster node …");
-            using var api = apiFactory(server, secret);
+            using var api = apiFactory(server with {IgnoreCertificateErrors=skip}, secret);
             var all = await api.ListVmsAsync(ct); ct.ThrowIfCancellationRequested();
             var current = all.FirstOrDefault(v => v.Id == saved.VmId) ?? throw new InvalidOperationException("VM ID not visible. Check the server profile, VM ID and permissions.");
             if (current.Status != "running") throw new InvalidOperationException("The VM is not running. Start it first, then reconnect.");
@@ -293,12 +294,19 @@ public partial class MainWindow : Window
                     await candidate.ConnectAsync(api,current,ct); RememberConsole(saved);
                 }
                 catch { candidate.Dispose(); if(vncHost==candidate) { vncHost=null; ConsoleArea.Child=new TextBlock { Text=consoleType+" connection not established.",Margin=new Thickness(24) }; } throw; }
-                return;
+                return true;
             }
             EnsureHost(); // Initialize the native runtime before consuming the short-lived ticket.
             Status("Requesting a fresh SPICE ticket …");
             var config = SpiceConfig.Parse(await api.GetConsoleAsync(current, string.IsNullOrWhiteSpace(server.Proxy) ? api.Host : server.Proxy, ct));
             ct.ThrowIfCancellationRequested(); host!.Connect(config); RememberConsole(saved);
+            return true;
+            },error=>{
+                if(closing||ct.IsCancellationRequested||!data.Servers.Contains(server)||!OfferCertificateRetry(this,server.Address,error,true))return false;
+                var next=Snapshot();int index=next.Servers.IndexOf(server);
+                if(index<0||ct.IsCancellationRequested)return false;
+                next.Servers[index]=server with{IgnoreCertificateErrors=true};Commit(next,saved.Id,server.Id);return true;
+            });
         });
     }
     void DisconnectConsole()
@@ -332,8 +340,12 @@ public partial class MainWindow : Window
             Commit(new(1, new() { server }, new() { vm, new(Guid.NewGuid(), server.Id, 102, "Linux Build-Server") }), vm.Id, server.Id);
             if (store.Load().Vms.Count != 2 || SecretProtection.Unprotect(store.Load().Servers[0].ProtectedSecret!) != "synthetic-secret") throw new Exception("Profile reload / DPAPI failed");
             sessionSecrets[server.Id] = "synthetic-secret";
+            if(Environment.GetCommandLineArgs().Contains("--vm-sort-test")){await WithVmTestViewport(CheckVmListSorting);File.WriteAllText(Path.Combine(AppContext.BaseDirectory,"smoke-result.txt"),"PASS: VM sort test.");return;}
+            if(Environment.GetCommandLineArgs().Contains("--certificate-retry-test")){
+                CheckCertificateRetryDialog();File.WriteAllText(Path.Combine(AppContext.BaseDirectory,"smoke-result.txt"),"PASS: certificate retry dialog, endpoint and reason, safe default, rejection and acceptance.");return;
+            }
             if(Environment.GetCommandLineArgs().Contains("--vm-menu-test")) {
-                CheckRichClipboard();await CheckUnifiedMenus();await CheckVmListSorting();await CheckRowPower();await CheckSetupDialogs();await CheckVmSettings(vm);await CheckVmFolders(server);CheckClipboardKeystrokes();
+                CheckRichClipboard();await CheckUnifiedMenus();await WithVmTestViewport(CheckVmListSorting);await WithVmTestViewport(CheckRowPower);await CheckSetupDialogs();await CheckVmSettings(vm);await CheckVmFolders(server);CheckClipboardKeystrokes();
                 using(var ct=new CancellationTokenSource(TimeSpan.FromSeconds(30))) {
                     using var testVnc=new NoVncHost();ConsoleArea.Child=testVnc;UpdateLayout();await testVnc.InitializeAsync(ct.Token);await testVnc.CheckSyntheticSessionAsync(ct.Token);
                 }
@@ -347,7 +359,7 @@ public partial class MainWindow : Window
                 || DescribeFeature(true,false,true,false,false,false).State != "Not verified"
                 || DescribeFeature(true,false,true,false,false,true).State != "Not verified")
                 throw new Exception("Console feature availability states are incorrect");
-            await CheckVmListSorting();
+            await WithVmTestViewport(CheckVmListSorting);
             await CheckSetupDialogs();
             await CheckVmSettings(vm);
             using var socket = new System.Net.Sockets.Socket(System.Net.Sockets.AddressFamily.InterNetwork, System.Net.Sockets.SocketType.Stream, System.Net.Sockets.ProtocolType.Tcp);

@@ -120,7 +120,12 @@ public partial class MainWindow
                     try { if(!smokeMode)await SyncInventory(api,server,all); }
                     finally { await consoleRefresh; }
                 }
-                catch { if (!closing && data.Servers.Contains(server)) foreach (var v in favorites.Where(v => data.Vms.Contains(v) && v.Id != targetVm?.Id)) runtime[v.Id] = new(null, DateTimeOffset.UtcNow, "Unreachable"); }
+                catch(Exception error) {
+                    if(!closing && data.Servers.Contains(server)){
+                        foreach(var v in favorites.Where(v=>data.Vms.Contains(v)&&v.Id!=targetVm?.Id))runtime[v.Id]=new(null,DateTimeOffset.UtcNow,"Unreachable");
+                        if(!server.IgnoreCertificateErrors && TlsPolicy.Rejection(error) is {} rejected)InventoryCertificateFailure(server,error,rejected);
+                    }
+                }
             }
         }
         finally { await targetRefresh; polling = false; if (!closing) { Filter(); UpdateRuntimeHeader(); } }

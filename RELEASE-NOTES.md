@@ -1,17 +1,13 @@
-# DALIZO - server certificate option and startup checks
+# DALIZO - certificate retry and VM menu test fix
 
-Add/Edit server now offers **Ignore HTTPS certificate errors (unsafe)**. It is off by default and saved separately for each server. It applies to API requests, automatic administrator setup, permission management and noVNC/serial connections. Changing the address in the editor resets the option. Existing profiles continue to validate certificates.
+If certificate verification fails during a manual connection test, administrator login or console connection, DALIZO shows the server and the reason. **Keep verification** is the default. **Ignore and retry** explicitly enables the exception for this server and retries once. With the exception enabled, passwords and API tokens could be intercepted. Other connection errors do not trigger this prompt.
 
-When enabled, the server identity is not verified and passwords/API tokens could be intercepted. Prefer trusting the correct CA or fixing the server certificate chain. SPICE's ticket certificate handling is unchanged. Reconnect existing consoles after changing the setting.
-
-DALIZO checks the local SPICE library and WebView2 availability at startup. Missing components are reported with download links; server management remains usable. Recheck using **Options > Check prerequisites**. Server certificates and permissions are checked by the server connection test. A missing .NET runtime in the no-runtime package must be installed before DALIZO can start.
-
-Error details now explain PartialChain certificate failures. Short field examples and compact help tooltips are retained.
+The VM sorting test now renders the real VM list independently of popup focus. It checks the sort arrow, selection, search and saved order with 1,000 synthetic VMs. The focused VM menu suite passed twice with the fix; the sorting behavior of the application itself is unchanged.
 
 ## Downloads
 
-- **DALIZO-0.1.0-preview.9-win-x64.zip**: includes .NET.
-- **DALIZO-0.1.0-preview.9-win-x64-no-runtime.zip**: requires .NET 10 Desktop Runtime for Windows x64, available from [Microsoft](https://dotnet.microsoft.com/en-us/download/dotnet/10.0).
+- **DALIZO-0.1.0-preview.10-win-x64.zip**: includes .NET.
+- **DALIZO-0.1.0-preview.10-win-x64-no-runtime.zip**: requires .NET 10 Desktop Runtime for Windows x64, available from [Microsoft](https://dotnet.microsoft.com/en-us/download/dotnet/10.0).
 
 Extract the entire ZIP and open DALIZO.exe. See PREREQUISITES.md for installation steps. VirtViewer x64 for SPICE and Microsoft Edge WebView2 Runtime for noVNC/serial remain separate prerequisites. No profiles or credentials are included.
 

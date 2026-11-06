@@ -34,7 +34,7 @@ public partial class MainWindow
                 if(path.EndsWith("/config"))return "{\"data\":{\"vga\":\"std\"}}";
                 return "{\"data\":[{\"type\":\"qemu\",\"node\":\"node\",\"vmid\":"+a.VmId+",\"name\":\"First\",\"status\":\"running\"},{\"type\":\"qemu\",\"node\":\"node\",\"vmid\":"+b.VmId+",\"name\":\"Second\",\"status\":\""+(running?"running":"stopped")+"\"}]}";
             }));api.UseToken(server.TokenId,key);return api;};
-            SetTarget(a);ShowSidebar(true);UpdateLayout();await Dispatcher.InvokeAsync(()=>{},DispatcherPriority.ApplicationIdle);
+            SetTarget(a);UpdateLayout();await Dispatcher.InvokeAsync(()=>{},DispatcherPriority.ApplicationIdle);
             IEnumerable<DependencyObject> Children(DependencyObject p){for(int i=0;i<VisualTreeHelper.GetChildrenCount(p);i++){var c=VisualTreeHelper.GetChild(p,i);yield return c;foreach(var n in Children(c))yield return n;}}
             var button=Children(VmList).OfType<Button>().Single(x=>Equals(x.Tag,"start")&&x.DataContext is VmRow r&&r.Id==b.Id);
             button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));

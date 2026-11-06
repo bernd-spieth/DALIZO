@@ -11,14 +11,14 @@ public partial class MainWindow
         owner.AddField(start);
         start.Click+=(_,_)=> {
             try {
-                var result=ShowAdministratorSetup(owner,address.Text.Trim(),ignoreCertificateErrors:ignoreTls?.IsChecked==true);
+                var result=ShowAdministratorSetup(owner,address.Text.Trim(),ignoreCertificateErrors:ignoreTls?.IsChecked==true,onExceptionEnabled:()=>{if(ignoreTls!=null)ignoreTls.IsChecked=true;});
                 if(result==null)return;
                 token.Text=result.TokenId;secret.Password=result.Secret;remember.IsChecked=true;
                 owner.Note("Access created and verified. Click Apply to save this server.");start.IsEnabled=false;
             } catch(Exception error) {ErrorDetails.Show(owner,"Access setup failed.",error,new[]{secret.Password});}
         };
     }
-    SetupResult? ShowAdministratorSetup(Window owner,string address,Action<SetupResult>? save=null,bool ignoreCertificateErrors=false)
+    SetupResult? ShowAdministratorSetup(Window owner,string address,Action<SetupResult>? save=null,bool ignoreCertificateErrors=false,Action? onExceptionEnabled=null)
     {
                 using(var check=new ProxmoxApi(address,ignoreCertificateErrors:ignoreCertificateErrors)){}
                 var dialog=new EditorDialog(owner,"Automatic Proxmox access setup",save==null?"Create access":"Create access and add server");
@@ -49,16 +49,25 @@ public partial class MainWindow
                     var scoped=SetupPlan.Create(all.IsChecked==true,ids.Text);
                     var plan=initial with {Paths=scoped.Paths};
                     string pass=password.Password;password.Clear();
-                    using var setup=new ProxmoxSetup(address,ignoreCertificateErrors:ignoreCertificateErrors);
-                    try {
-                        await setup.LoginAsync(admin.Text.Trim(),pass,()=> {
+                    async Task<ProxmoxSetup> Login(bool skip){
+                        var client=new ProxmoxSetup(address,ignoreCertificateErrors:skip);
+                        try{
+                            await client.LoginAsync(admin.Text.Trim(),pass,()=> {
                             var factor=new EditorDialog(dialog,"Two-factor authentication","Continue");
                             factor.Note("Enter the current code from your authenticator app. Security keys and browser-based sign-in are not available here.");
                             var code=factor.Password("TOTP code");
                             string? answer=factor.ShowDialog()==true?code.Password.Trim():null;
                             code.Clear();return Task.FromResult(answer);
                         });
-                    } finally {pass="";}
+                            return client;
+                        }catch{client.Dispose();throw;}
+                    }
+                    ProxmoxSetup authorized;
+                    try{authorized=await TlsPolicy.Connect(ignoreCertificateErrors,Login,error=>{
+                        if(!OfferCertificateRetry(dialog,address,error,false))return false;
+                        ignoreCertificateErrors=true;onExceptionEnabled?.Invoke();return true;
+                    });}finally{pass="";}
+                    using var setup=authorized;
                     bool reuseAccount=false;
                     if(reuse.IsChecked==true) {
                         var candidates=await setup.FindReusableAsync(plan.Paths);

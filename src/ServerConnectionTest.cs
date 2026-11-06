@@ -16,10 +16,10 @@ public partial class MainWindow
         var details=new ErrorDetails(); dialog.AddField(button); dialog.AddField(report);dialog.AddField(details);
         CancellationTokenSource? pending = null;
         bool closed = false;
-        int revision = 0;
+        int revision = 0; bool applyingException=false;
         void Invalidate()
         {
-            revision++; pending?.Cancel();details.Clear();
+            if(applyingException)return; revision++; pending?.Cancel();details.Clear();
             if (report.Visibility == Visibility.Visible) report.Text = "Settings changed. Test the connection again.";
         }
         address.TextChanged += (_, _) => Invalidate();
@@ -31,14 +31,22 @@ public partial class MainWindow
         button.Click += async (_, _) =>
         {
             var testedRevision = revision;
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-            pending = timeout; button.IsEnabled = false;details.Clear();
+            button.IsEnabled = false;details.Clear();
             report.Visibility = Visibility.Visible; report.Text = "Testing HTTPS connection, API token and VM permissions…";
             try
             {
-                using var api = new ProxmoxApi(address.Text.Trim(),ignoreCertificateErrors:ignoreTls?.IsChecked==true);
-                api.UseToken(token.Text.Trim(), secret.Password);
-                var result = await api.TestConnectionAsync(timeout.Token);
+                var endpoint=address.Text.Trim();
+                var result=await TlsPolicy.Connect(ignoreTls?.IsChecked==true,async skip=>{
+                    using var timeout=new CancellationTokenSource(TimeSpan.FromSeconds(30));pending=timeout;
+                    try{using var api=new ProxmoxApi(endpoint,ignoreCertificateErrors:skip);
+                    api.UseToken(token.Text.Trim(),secret.Password);
+                    return await api.TestConnectionAsync(timeout.Token);
+                    }finally{pending=null;}
+                },error=>{
+                    if(ignoreTls==null||closed||revision!=testedRevision||!OfferCertificateRetry(dialog,endpoint,error,false))return false;
+                    applyingException=true;try{ignoreTls.IsChecked=true;}finally{applyingException=false;}
+                    return true;
+                });
                 if (!closed && revision == testedRevision) report.Text = (ignoreTls?.IsChecked==true?"Certificate validation is disabled for this server.\n\n":"")+result;
             }
             catch (Exception error)

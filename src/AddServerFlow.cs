@@ -40,7 +40,7 @@ public partial class MainWindow
             var server=new ServerProfile(id,name.Text.Trim(),address.Text.Trim(),generated.TokenId,proxy.Text.Trim(),remember.IsChecked==true?SecretProtection.Protect(generated.Secret):null,ignoreTls.IsChecked==true);
             var next=Snapshot();next.Servers.Add(server);Commit(next,server:server.Id);
             sessionSecrets[server.Id]=generated.Secret;
-        },ignoreCertificateErrors:ignoreTls.IsChecked==true);
+        },ignoreCertificateErrors:ignoreTls.IsChecked==true,onExceptionEnabled:()=>ignoreTls.IsChecked=true);
         if(data.Servers.Any(s=>s.Id==id)) {
             lastInventorySync.Remove(id);Status("Server added automatically. The VM list will synchronize now.");
             if(!smokeMode)_=PollStatus();

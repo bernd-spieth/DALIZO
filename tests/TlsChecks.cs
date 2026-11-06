@@ -18,7 +18,7 @@ static class TlsChecks
         using var generated=request.CreateSelfSigned(DateTimeOffset.UtcNow.AddMinutes(-1),DateTimeOffset.UtcNow.AddHours(1));
         using var certificate=X509CertificateLoader.LoadPkcs12(generated.Export(X509ContentType.Pfx),null,X509KeyStorageFlags.DefaultKeySet);
         using(var strict=TlsPolicy.Handler(new Uri("https://pve.example.test:8006"),false))
-            Require(strict.ServerCertificateCustomValidationCallback==null&&!strict.AllowAutoRedirect,"Strict HTTPS defaults changed");
+            Require(strict.ServerCertificateCustomValidationCallback!=null&&!strict.AllowAutoRedirect,"Strict HTTPS defaults changed");
         using(var relaxed=TlsPolicy.Handler(new Uri("https://pve.example.test:8006"),true)){
             var validate=relaxed.ServerCertificateCustomValidationCallback!;
             Require(validate(new(HttpMethod.Get,"https://pve.example.test:8006/"),certificate,null,SslPolicyErrors.RemoteCertificateChainErrors),"Opt-in failed");
@@ -26,8 +26,21 @@ static class TlsChecks
                 Require(!validate(new(HttpMethod.Get,other),certificate,null,SslPolicyErrors.RemoteCertificateChainErrors),"Exception crossed server boundary");
         }
         using(var socket=new ClientWebSocket()){
-            TlsPolicy.Configure(socket.Options,false);Require(socket.Options.RemoteCertificateValidationCallback==null,"WebSocket strict default changed");
+            TlsPolicy.Configure(socket.Options,false);Require(socket.Options.RemoteCertificateValidationCallback!=null,"WebSocket strict default changed");
             TlsPolicy.Configure(socket.Options,true);Require(socket.Options.RemoteCertificateValidationCallback!(socket,certificate,null,SslPolicyErrors.RemoteCertificateChainErrors),"WebSocket opt-in missing");
+        }
+        foreach(bool accept in new[]{false,true}){
+            List<bool> attempts=[];int offers=0;
+            try{
+                var ok=await TlsPolicy.Connect(false,skip=>{attempts.Add(skip);return skip?Task.FromResult(true):Task.FromException<bool>(new HttpRequestException("TLS",new TlsPolicy.CertificateRejected("PartialChain")));},
+                    error=>{offers++;return accept;});
+                Require(accept&&ok,"Unexpected successful retry");
+            }catch(HttpRequestException) when(!accept){}
+            Require(offers==1&&attempts.SequenceEqual(accept?new[]{false,true}:new[]{false}),"Consent/retry mismatch");
+        }
+        foreach(var unrelated in new Exception[]{new HttpRequestException("Unauthorized"),new System.Security.Authentication.AuthenticationException("Protocol mismatch"),new OperationCanceledException()}){
+            try{await TlsPolicy.Connect(false,_=>Task.FromException<bool>(unrelated),_=>throw new Exception("Prompted for a non-certificate error"));}
+            catch(Exception e) when(e==unrelated){}
         }
         var profile=new ServerProfile(Guid.NewGuid(),"Test","https://pve.example.test:8006","test@pve!client","",null);
         Require(!profile.IgnoreCertificateErrors,"Profile default is unsafe");
@@ -52,7 +65,7 @@ static class TlsChecks
             });
             bool accepted=false;
             try{using var api=new ProxmoxApi($"https://127.0.0.1:{port}",ignoreCertificateErrors:allow);api.UseToken("test@pve!client","synthetic-secret");await api.ListVmsAsync(timeout.Token);accepted=true;}
-            catch(HttpRequestException) when(!allow){}
+            catch(HttpRequestException e) when(!allow){Require(TlsPolicy.Rejection(e)!=null,"Real certificate rejection not recognized");}
             finally{await serving;listener.Stop();}
             Require(accepted==allow&&received==allow,"Local TLS enforcement or credential boundary failed");
         }

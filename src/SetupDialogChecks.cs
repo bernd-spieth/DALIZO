@@ -9,6 +9,21 @@ using System.Windows.Threading;
 namespace ProxmoxSpice;
 public partial class MainWindow
 {
+    void CheckCertificateRetryDialog(){
+        static IEnumerable<DependencyObject> Walk(DependencyObject root){
+            for(int i=0;i<VisualTreeHelper.GetChildrenCount(root);i++){var child=VisualTreeHelper.GetChild(root,i);yield return child;foreach(var item in Walk(child))yield return item;}
+        }
+        foreach(bool acceptRetry in new[]{false,true}){
+            bool retryDialogChecked=false;
+            _=Dispatcher.BeginInvoke(DispatcherPriority.Background,new Action(()=>{
+                var popup=Application.Current.Windows.OfType<EditorDialog>().Single(w=>w.Title=="Server certificate could not be verified");
+                popup.UpdateLayout();var keep=Walk(popup).OfType<Button>().Single(b=>b.Content as string=="Keep verification");
+                retryDialogChecked=keep.IsDefault&&Walk(popup).OfType<TextBlock>().Any(t=>t.Text.Contains("https://pve.example.test:8006")&&t.Text.Contains("PartialChain"));
+                if(acceptRetry)Walk(popup).OfType<Button>().Single(b=>b.Content as string=="Ignore and retry").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));else popup.Close();
+            }));
+            if(OfferCertificateRetry(this,"https://pve.example.test:8006",new TlsPolicy.CertificateRejected("PartialChain"),true)!=acceptRetry||!retryDialogChecked)throw new Exception("Certificate retry dialog choice or safe default was incorrect");
+        }
+    }
     async Task CheckSetupDialogs()
     {
         IEnumerable<Button> Buttons(DependencyObject parent) {
@@ -26,6 +41,7 @@ public partial class MainWindow
             var preview=new RenderTargetBitmap((int)popup.ActualWidth,(int)popup.ActualHeight,96,96,PixelFormats.Pbgra32);preview.Render(popup);var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(preview));using(var file=File.Create(Path.Combine(AppContext.BaseDirectory,"prerequisites-preview.png")))encoder.Save(file);popup.Close();};
         checkTimer.Start();try{ShowPrerequisites(new[]{new ComponentCheck("Windows desktop / .NET",true,"Running"),new ComponentCheck("SPICE",false,"Install VirtViewer x64","https://www.spice-space.org/download.html"),new ComponentCheck("noVNC / Serial",false,"Install WebView2","https://developer.microsoft.com/en-us/microsoft-edge/webview2/")});}finally{checkTimer.Stop();}
         if(!prerequisitesShown)throw new Exception("Missing-component dialog did not open");
+        CheckCertificateRetryDialog();
         Exception? helpFailure=null;
         var helpCheck=new EditorDialog(this,"Help and errors check","Submit");
         var input=helpCheck.Text("Server");helpCheck.Help("A helpful server explanation.");

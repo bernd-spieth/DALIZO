@@ -9,13 +9,33 @@ using System.Windows.Threading;
 namespace ProxmoxSpice;
 public partial class MainWindow
 {
+    async Task WithVmTestViewport(Func<Task> check)
+    {
+        // The popup closes on focus loss. Render the real VM panel in a finite
+        // test viewport so WPF generates headers and rows even in a background run.
+        var restoreSidebar=sidebarVisible;
+        var viewport=new Grid { Width=656,Height=540,HorizontalAlignment=HorizontalAlignment.Left,VerticalAlignment=VerticalAlignment.Top };
+        ShowSidebar(false);
+        try {
+            SidebarOverlay.Child=null;
+            WorkspaceGrid.Children.Add(viewport);
+            viewport.Children.Add(SidebarPanel);
+            UpdateLayout();
+            await check();
+        } finally {
+            viewport.Children.Remove(SidebarPanel);
+            WorkspaceGrid.Children.Remove(viewport);
+            SidebarOverlay.Child=SidebarPanel;
+            ShowSidebar(restoreSidebar);
+        }
+    }
     async Task CheckVmListSorting()
     {
         var saved=data;var selected=SelectedVm;var originalQuery=Search.Text;var originalSort=vmSort;
         try {
             data=new(1,saved.Servers.ToList(),Enumerable.Range(1,1000)
                 .Select(i=>new SavedVm(Guid.NewGuid(),saved.Servers[0].Id,10000+i,$"Guest {1001-i:0000}")).ToList());
-            Search.Text="";Filter();Activate();ShowSidebar(true);UpdateLayout();
+            Search.Text="";Filter();UpdateLayout();
             await Dispatcher.InvokeAsync(()=>{},DispatcherPriority.ApplicationIdle);
             var originalColumns=VmList.Columns.OrderBy(c=>c.DisplayIndex).ToArray();
             if(!VmList.CanUserReorderColumns)throw new Exception("Column dragging is disabled.");
@@ -39,14 +59,15 @@ public partial class MainWindow
             if(chosen.RuntimeStatus!="Running")throw new Exception("Cached row status was not updated.");
             if(view.OfType<VmRow>().First().Name!="Guest 1000")throw new Exception("Refresh lost descending name sort.");
             int rendered=Enumerable.Range(0,view.Count).Count(i=>VmList.ItemContainerGenerator.ContainerFromIndex(i) is DataGridRow);
-            if(rendered>=100)throw new Exception($"VM list did not virtualize: {rendered} rendered rows for 1000 VMs.");
+            if(rendered is <=0 or >=100)throw new Exception($"Expected a populated, virtualized VM list: {rendered} rendered rows for 1000 VMs.");
             Search.Text="Guest 00";Filter();
             if(VmList.Items.OfType<VmRow>().First().Name!="Guest 0099")throw new Exception("Search lost descending sort.");
             vmSort=new("VmId",ListSortDirection.Ascending);LoadVmSort();Refresh();
             if(vmSort.Property!="Name" || vmSort.Direction!=ListSortDirection.Descending || NameColumn.SortDirection!=ListSortDirection.Descending || VmList.Items.OfType<VmRow>().First().Name!="Guest 0099")throw new Exception("Saved sorting or header direction was lost after reload and refresh.");
             IEnumerable<T> Descendants<T>(DependencyObject root) where T:DependencyObject {for(int i=0;i<System.Windows.Media.VisualTreeHelper.GetChildrenCount(root);i++){var child=System.Windows.Media.VisualTreeHelper.GetChild(root,i);if(child is T match)yield return match;foreach(var nested in Descendants<T>(child))yield return nested;}}
             UpdateLayout();
-            var header=Descendants<System.Windows.Controls.Primitives.DataGridColumnHeader>(VmList).Single(h=>h.Column==NameColumn);
+            var headers=Descendants<System.Windows.Controls.Primitives.DataGridColumnHeader>(VmList).ToArray();
+            var header=headers.SingleOrDefault(h=>h.Column==NameColumn)??throw new Exception($"Missing Name header: active={IsActive}; window={IsVisible}; popup={SidebarOverlay.IsOpen}; gridVisible={VmList.IsVisible}; gridLoaded={VmList.IsLoaded}; grid={VmList.RenderSize}; realizedRows={rendered}; headerCount={headers.Length}");
             var arrow=(System.Windows.Shapes.Path)header.Template.FindName("SortArrow",header);
             if(arrow.Visibility!=Visibility.Visible||arrow.Data.ToString()!="M0,0L4,5 8,0z") {
                 if(arrow.Visibility!=Visibility.Visible||NameColumn.SortDirection!=ListSortDirection.Descending)throw new Exception("Sort indicator missing.");
