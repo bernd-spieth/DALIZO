@@ -23,7 +23,15 @@ public sealed partial class ProxmoxSetup
         if(!permissions.TryGetProperty("/",out var rights)||new[]{"Sys.Audit","Sys.Modify","User.Modify","Permissions.Modify"}.Any(p=>!rights.TryGetProperty(p,out var v)||v.ToString() is not ("1" or "True")))
             throw new InvalidOperationException("This administrator account cannot check and manage all required permissions. Sign in with a full administrator account, such as root@pam.");
     }
-    bool ExpectedRole(JsonElement role){var privileges=Text(role,"privs").Split(new[]{' ',','},StringSplitOptions.RemoveEmptyEntries).ToHashSet();return privileges.SetEquals(SetupPlan.RolePrivileges)||privileges.SetEquals(ProxmoxApi.RequiredVmPermissions.Select(p=>p.Privilege));}
+    bool ExpectedRole(JsonElement role){
+        var privileges=Text(role,"privs").Split(new[]{' ',','},StringSplitOptions.RemoveEmptyEntries).ToHashSet();
+        // Earlier managed roles predate network selection and hardware editing.
+        privileges.Remove("SDN.Use");
+        privileges.Remove("VM.Config.HWType");
+        privileges.Remove("VM.Config.Disk");
+        privileges.Remove("VM.Config.CDROM");
+        return privileges.SetEquals(ProxmoxApi.RequiredVmPermissions.Select(p=>p.Privilege).Where(p=>p is not ("VM.Config.HWType" or "VM.Config.Disk" or "VM.Config.CDROM")));
+    }
     public async Task<CleanupPreview> InspectCleanupAsync(string tokenId)
     {
         if(!TryManagedAccess(tokenId,out var user,out var role))throw new InvalidOperationException("This is not a recognized DALIZO-generated access identity. Remove only the local profile, or manage access in Proxmox.");
@@ -42,7 +50,7 @@ public sealed partial class ProxmoxSetup
         if(te&&Text(t,"comment")!="DALIZO client")throw new InvalidOperationException("The token is not marked as a DALIZO client token. Nothing was changed.");
         var entries=acl.EnumerateArray().ToArray();
         bool Ours(JsonElement a,string subject,string type)=>Text(a,"ugid")==subject&&Text(a,"type")==type;
-        bool Expected(JsonElement a)=>Text(a,"roleid")==role&&(Text(a,"path")==SetupPlan.BridgePath||Text(a,"path")==SetupPlan.LegacyBridgePath||Regex.IsMatch(Text(a,"path"),@"^/vms(?:/[1-9][0-9]*)?$"));
+        bool Expected(JsonElement a)=>IsStoragePath(Text(a,"path")) && Text(a,"roleid")==StorageRole || Text(a,"roleid")==role&&(Text(a,"path")==SetupPlan.BridgePath||Text(a,"path")==SetupPlan.LegacyBridgePath||Regex.IsMatch(Text(a,"path"),@"^/vms(?:/[1-9][0-9]*)?$"));
         var ta=entries.Where(a=>Ours(a,tokenId,"token")).ToArray();
         if(ta.Any(a=>!Expected(a)))throw new InvalidOperationException("This connection’s permissions have been changed outside the expected setup. Ask your Proxmox administrator to check them before removal. Nothing was removed.");
         var ua=entries.Where(a=>Ours(a,user,"user")).ToArray();
@@ -56,7 +64,7 @@ public sealed partial class ProxmoxSetup
         var current=await InspectCleanupAsync(approved.TokenId);
         if(JsonSerializer.Serialize(current)!=JsonSerializer.Serialize(approved))throw new InvalidOperationException("Access changed since review. Inspect it again before removing anything.");
         var done=new List<string>();
-        async Task RemoveAcl(string path,bool token){await Request(HttpMethod.Put,"access/acl",new(){["path"]=path,[token?"tokens":"users"]=token?current.TokenId:current.User,["roles"]=current.Role,["delete"]="1"});done.Add("access assignment "+path);}
+        async Task RemoveAcl(string path,bool token){await Request(HttpMethod.Put,"access/acl",new(){["path"]=path,[token?"tokens":"users"]=token?current.TokenId:current.User,["roles"]=IsStoragePath(path)?StorageRole:current.Role,["delete"]="1"});done.Add("access assignment "+path);}
         try {
             foreach(var path in current.TokenPaths)await RemoveAcl(path,true);
             if(current.TokenExists){await Request(HttpMethod.Delete,"access/users/"+Uri.EscapeDataString(current.User)+"/token/"+current.TokenId.Split('!')[1]);done.Add("token");}
@@ -84,7 +92,7 @@ public sealed partial class ProxmoxSetup
             string user=Text(u,"userid");
             if(Text(u,"comment")!="DALIZO dedicated API account"||Text(u,"enable") is not ("1" or "True")||Text(u,"groups") is not ("" or "[]")||!TryManagedAccess(user+"!client",out _,out var role))continue;
             if(!roles.EnumerateArray().Any(r=>Text(r,"roleid")==role&&Text(r,"privs").Split(new[]{' ',','},StringSplitOptions.RemoveEmptyEntries).ToHashSet().SetEquals(SetupPlan.RolePrivileges)))continue;
-            var a=acl.EnumerateArray().Where(x=>Text(x,"type")=="user"&&Text(x,"ugid")==user).ToArray();
+            var a=acl.EnumerateArray().Where(x=>Text(x,"type")=="user"&&Text(x,"ugid")==user && !(IsStoragePath(Text(x,"path")) && Text(x,"roleid")==StorageRole)).ToArray();
             if(a.Any(x=>Text(x,"roleid")!=role||Text(x,"propagate") is not ("1" or "True"))||!a.Select(x=>Text(x,"path")).ToHashSet().SetEquals(paths))continue;
             result.Add(new(role,user,"client-"+Guid.NewGuid().ToString("N")[..12],paths));
         }
@@ -113,5 +121,3 @@ public sealed partial class ProxmoxSetup
         }
     }
 }
-
-

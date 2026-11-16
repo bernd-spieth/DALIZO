@@ -4,7 +4,7 @@ using System.Text.Json;
 namespace ProxmoxSpice;
 
 public sealed record ServerProfile(Guid Id, string Name, string Address, string TokenId, string Proxy, string? ProtectedSecret, bool IgnoreCertificateErrors = false);
-public sealed record SavedVm(Guid Id, Guid ServerId, int VmId, string Name, string ConsoleType = "Auto", bool ExplicitConsole = false, bool ClipboardEnabled = true, bool AutoResolution = true, string SerialPort = "serial0", string Folder = "", bool ImageClipboardEnabled = false, bool FileTransferEnabled = false);
+public sealed record SavedVm(Guid Id, Guid ServerId, int VmId, string Name, string ConsoleType = "Auto", bool ExplicitConsole = false, bool ClipboardEnabled = true, bool AutoResolution = true, string SerialPort = "serial0", string Folder = "", bool ImageClipboardEnabled = false, bool FileTransferEnabled = false, bool SpiceAudioEnabled = true, bool PreferSpiceMjpeg = true);
 public sealed record WorkspaceData(int Version, List<ServerProfile> Servers, List<SavedVm> Vms)
 {
     public static WorkspaceData Empty() => new(1, new(), new());

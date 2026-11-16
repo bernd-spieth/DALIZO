@@ -17,6 +17,9 @@ const string Obj="libgobject-2.0-0.dll", Glib="libglib-2.0-0.dll", Spice="libspi
     [DllImport(Glib, CallingConvention = CallingConvention.Cdecl)] internal static extern IntPtr g_byte_array_append(IntPtr array, byte[] bytes, uint count);
     [DllImport(Glib, CallingConvention = CallingConvention.Cdecl)] internal static extern void g_byte_array_unref(IntPtr array);
     [DllImport(Spice, CallingConvention = CallingConvention.Cdecl)] internal static extern IntPtr spice_session_new();
+    [DllImport(Spice, CallingConvention = CallingConvention.Cdecl)] internal static extern void spice_display_channel_change_preferred_video_codec_type(IntPtr channel, int codec);
+    [DllImport(Spice, CallingConvention = CallingConvention.Cdecl)] internal static extern IntPtr spice_audio_get(IntPtr session, IntPtr context);
+    [DllImport(Obj, CallingConvention = CallingConvention.Cdecl)] internal static extern void g_signal_stop_emission_by_name(IntPtr instance, string signal);
     [DllImport(Spice, CallingConvention = CallingConvention.Cdecl)] internal static extern int spice_session_connect(IntPtr session);
     [DllImport(Spice, CallingConvention = CallingConvention.Cdecl)] internal static extern void spice_session_disconnect(IntPtr session);
     [DllImport(Spice, CallingConvention = CallingConvention.Cdecl)] internal static extern void spice_inputs_key_press(IntPtr channel, uint scancode);

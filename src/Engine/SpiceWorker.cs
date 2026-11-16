@@ -31,6 +31,13 @@ sealed partial class SpiceWorker : IDisposable {
     int generation;
     IntPtr session,display,inputs,main;
     public volatile bool SessionOpen;
+    public volatile bool MainConnected;
+    public volatile bool DisplayFrameReceived;
+    public volatile string AudioState="Not checked";
+    public volatile string VideoPreference="Automatic";
+    IntPtr playback;
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    delegate void PlaybackData(IntPtr channel, IntPtr samples, int size, IntPtr user);
     readonly HashSet<uint> pressed=new HashSet<uint>();
     int mouseButtons;
     public int ThreadId;
@@ -67,30 +74,61 @@ sealed partial class SpiceWorker : IDisposable {
     public void Position(int x,int y,int buttons){Input(ch=>N.spice_inputs_position(ch,x,y,0,buttons));}
     public void Button(int b,int mask,bool down){Input(ch=>{Trace.Mark(down?"press_dispatch":"release_dispatch");mouseButtons=mask;if(down)N.spice_inputs_button_press(ch,b,mask);else N.spice_inputs_button_release(ch,b,mask);});}
     public void Disconnect(){SessionOpen=false;Interlocked.Increment(ref generation);Post(DisconnectCore);}
-    public void Connect(Dictionary<string,string> config){SessionOpen=true;int stamp=generation;Post(()=>{if(stamp!=generation){config.Clear();return;}try{ConnectCore(config);}catch{SessionOpen=false;DisconnectCore();throw;}finally{config.Clear();}});}
+    public void Connect(Dictionary<string,string> config, bool audioEnabled=true, bool preferMjpeg=true){SessionOpen=true;int stamp=generation;Post(()=>{if(stamp!=generation){config.Clear();return;}try{ConnectCore(config, audioEnabled, preferMjpeg);}catch{SessionOpen=false;DisconnectCore();throw;}finally{config.Clear();}});}
     int Get(IntPtr obj,string key){int value;N.GetInt(obj,key,out value,IntPtr.Zero);return value;}
     void Bind(IntPtr obj,string name,Delegate callback){callbacks.Add(callback);N.g_object_ref(obj);bindings.Add(Tuple.Create(obj,N.g_signal_connect_data(obj,name,Marshal.GetFunctionPointerForDelegate(callback),IntPtr.Zero,IntPtr.Zero,0)));}
     void Guard(Action action){try{action();}catch(Exception ex){Status=ex.Message;}}
-    void ConnectCore(Dictionary<string,string> cfg){
+    void ConnectCore(Dictionary<string,string> cfg, bool audioEnabled, bool preferMjpeg){
         DisconnectCore();SessionOpen=true;Status="Connecting...";session=N.spice_session_new();
         foreach(string key in new[]{"host","tls-port","password","proxy"})N.SetString(session,key,cfg[key],IntPtr.Zero);
         N.SetString(session,"cert-subject",cfg["host-subject"],IntPtr.Zero);N.SetInt(session,"verify",4,IntPtr.Zero);
-        N.SetInt(session,"enable-usbredir",0,IntPtr.Zero);N.SetInt(session,"enable-audio",0,IntPtr.Zero);
+        N.SetInt(session,"enable-usbredir",1,IntPtr.Zero);
+        N.SetInt(session,"enable-audio",audioEnabled ? 1 : 0,IntPtr.Zero);
         IntPtr ca=N.g_byte_array_new();try{byte[] b=Encoding.UTF8.GetBytes(cfg["ca"]);N.g_byte_array_append(ca,b,(uint)b.Length);N.SetPtr(session,"ca",ca,IntPtr.Zero);}finally{N.g_byte_array_unref(ca);}
-        Bind(session,"channel-new",new Channel((s,c,u)=>Guard(()=>NewChannel(c))));
-        Bind(session,"channel-destroy",new Channel((s,c,u)=>{if(c==display){display=IntPtr.Zero;Frames.Clear();}if(c==inputs){InputReady=false;inputs=IntPtr.Zero;}if(c==main){main=IntPtr.Zero;UpdateAgent();}}));
+        Bind(session,"channel-new",new Channel((s,c,u)=>Guard(()=>NewChannel(c, preferMjpeg))));
+        // The session owns this helper. A missing audio backend must still allow display access.
+        AudioState=!audioEnabled ? "Disabled" : N.spice_audio_get(session,IntPtr.Zero)==IntPtr.Zero
+            ? "Local audio backend unavailable" : "Local backend ready, waiting for guest channel";
+        VideoPreference=preferMjpeg ? "Motion JPEG preferred" : "Automatic";
+        Bind(session,"channel-destroy",new Channel((s,c,u)=>{
+            if(c==playback){playback=IntPtr.Zero;AudioState="Guest playback channel closed";}
+            if(c==display){display=IntPtr.Zero;DisplayFrameReceived=false;Frames.Clear();}
+            if(c==inputs){InputReady=false;inputs=IntPtr.Zero;}
+            if(c==main){main=IntPtr.Zero;MainConnected=false;UpdateAgent();}
+        }));
         if(N.spice_session_connect(session)==0)throw new InvalidOperationException("SPICE connection could not start.");
     }
-    void NewChannel(IntPtr channel){int type=Get(channel,"channel-type");int channelGeneration=generation;
+    void NewChannel(IntPtr channel, bool preferMjpeg){int type=Get(channel,"channel-type");int channelGeneration=generation;
+        const int playbackChannel=5, recordChannel=6, SpiceVideoCodecMjpeg=1;
+        // The audio helper subscribes after this handler and would otherwise connect the microphone.
+        if(type==recordChannel){N.g_signal_stop_emission_by_name(session,"channel-new");return;}
+        if(type==playbackChannel){
+            if(AudioState=="Disabled" || AudioState=="Local audio backend unavailable")return;
+            playback=channel;
+            AudioState="Guest playback channel offered";
+            Bind(channel,"channel-event",new Event((c,e,u)=>{
+                if(c!=playback || channelGeneration!=generation)return;
+                if(e==10)AudioState="Guest playback channel open";
+                else if(e==12 || e>=20)AudioState="Guest playback channel unavailable";
+            }));
+            Bind(channel,"playback-data",new PlaybackData((c,p,size,u)=>{
+                if(c==playback && channelGeneration==generation && size>0)AudioState="Guest audio data received";
+            }));
+            Bind(channel,"playback-stop",new Notify((c,u)=>{
+                if(c==playback && channelGeneration==generation)AudioState="Guest playback idle";
+            }));
+            return;
+        }
         Bind(channel,"channel-event",new Event((c,e,u)=>Guard(()=>{
             if(channelGeneration!=generation)return;
+            if(type==2 && e==10 && preferMjpeg) N.spice_display_channel_change_preferred_video_codec_type(c, SpiceVideoCodecMjpeg);
             if(type==3)InputReady=e==10;
-            if(type==1&&e==10){N.spice_main_request_mouse_mode(c,2);UpdateAgent();}
+            if(type==1&&e==10){MainConnected=true;N.spice_main_request_mouse_mode(c,2);UpdateAgent();}
             if(e>=20&&e<=24||type==1&&e==12){SessionOpen=false;InputReady=false;Frames.Clear();Status="SPICE connection error (channel event "+e+"). Reconnect for a fresh ticket.";}
         })));
         if(type==2&&Get(channel,"channel-id")==0){display=channel;
             Bind(channel,"display-primary-create",new Create((c,f,w,h,st,sh,p,u)=>Guard(()=>Capture(new Rectangle(0,0,w,h)))));
-            Bind(channel,"display-primary-destroy",new Notify((c,u)=>Frames.Clear()));
+            Bind(channel,"display-primary-destroy",new Notify((c,u)=>{DisplayFrameReceived=false;Frames.Clear();}));
             Bind(channel,"display-invalidate",new Damage((c,x,y,w,h,u)=>Guard(()=>Capture(new Rectangle(x,y,w,h)))));
             Bind(channel,"display-mark",new Event((c,m,u)=>{if(m!=0)Guard(()=>Capture(new Rectangle(0,0,int.MaxValue,int.MaxValue)));}));
         }
@@ -98,12 +136,13 @@ sealed partial class SpiceWorker : IDisposable {
         if(type==3)inputs=channel;
         if(type==2||type==3)N.spice_channel_connect(channel);
     }
-    void Capture(Rectangle area){N.PrimarySurface surface;if(display==IntPtr.Zero||N.spice_display_get_primary(display,0,out surface)==0)return;Trace.Damage(area);Frames.Write(surface,area);Trace.Copied();Status="Connected - "+surface.Width+" x "+surface.Height;}
+    void Capture(Rectangle area){N.PrimarySurface surface;if(display==IntPtr.Zero||N.spice_display_get_primary(display,0,out surface)==0)return;Trace.Damage(area);Frames.Write(surface,area);DisplayFrameReceived=true;Trace.Copied();Status="Connected - "+surface.Width+" x "+surface.Height;}
     void DisconnectCore(){if(InputReady&&inputs!=IntPtr.Zero){foreach(uint key in pressed)N.spice_inputs_key_release(inputs,key);for(int b=1;b<=3;b++)if((mouseButtons&(1<<(b-1)))!=0)N.spice_inputs_button_release(inputs,b,0);}pressed.Clear();mouseButtons=0;
-        InputReady=false;CancelFileTransfers();ResetClipboard();if(session!=IntPtr.Zero)N.spice_session_disconnect(session);Frames.Clear();
+        InputReady=false;ReleaseUsb();CancelFileTransfers();ResetClipboard();if(session!=IntPtr.Zero)N.spice_session_disconnect(session);Frames.Clear();
         foreach(var b in bindings)N.g_signal_handler_disconnect(b.Item1,b.Item2);
         foreach(var b in bindings)N.g_object_unref(b.Item1);
-        bindings.Clear();callbacks.Clear();if(session!=IntPtr.Zero)N.g_object_unref(session);session=display=inputs=main=IntPtr.Zero;Status="Disconnected";
+        bindings.Clear();callbacks.Clear();if(session!=IntPtr.Zero)N.g_object_unref(session);session=display=inputs=main=playback=IntPtr.Zero;
+        MainConnected=false;DisplayFrameReceived=false;AudioState="Not checked";VideoPreference="Automatic";Status="Disconnected";
     }
     public void Dispose(){
         if(stopping)return;

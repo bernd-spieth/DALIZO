@@ -108,13 +108,19 @@ Check(managementCalls.Single(c => c.Path.EndsWith("/shutdown")).Body == "forceSt
 Check(managementCalls.Count(c => c.Method == "POST") == 4, "Power commands retried or missing");
 try { await management.PowerAsync(testVm, "reset"); throw new Exception("Unexpected action allowed"); } catch (ArgumentException) { }
 var baseline = new VmConfiguration(new string('a', 40), new() { ["name"] = "test-vm", ["description"] = "old", ["cores"] = "2", ["sockets"] = "1", ["memory"] = "current=2048,max=8192", ["balloon"] = "1024" });
+var lower=baseline.Changes("test-vm","old",2,1,768,512);
+Check(lower["memory"]=="current=768,max=8192" && lower["balloon"]=="512","Combined memory and balloon change failed");
+var weighted=new VmConfiguration(baseline.Digest,new(baseline.Values) {["shares"]="500"});
+Check(weighted.Changes("test-vm","old",2,1,2048,-1)["delete"]=="balloon,shares","Default memory did not clear balloon settings");
+var disabled=weighted.Changes("test-vm","old",2,1,2048,0);
+Check(disabled["balloon"]=="0" && disabled["delete"]=="shares","Disabling ballooning did not clear its weight");
 var delta = baseline.Changes("test-vm", "new", 2, 1, 4096);
 Check(delta.Count == 2 && delta["memory"] == "current=4096,max=8192" && !delta.ContainsKey("cores"), "Unchanged settings overwritten or RAM attributes lost");
 await management.UpdateConfigurationAsync(testVm, baseline.Digest, delta);
 Check(managementCalls.Last().Body.Contains("digest=" + new string('a', 40)), "Config digest omitted");
 try { baseline.Changes("test-vm", "new", 2, 1, 512); throw new Exception("Balloon minimum ignored"); } catch (ArgumentException) { }
 try { await management.UpdateConfigurationAsync(testVm, "", delta); throw new Exception("Missing digest accepted"); } catch (ArgumentException) { }
-try { await management.UpdateConfigurationAsync(testVm, baseline.Digest, new Dictionary<string, string> { { "delete", "scsi0" } }); throw new Exception("Unrelated property accepted"); } catch (ArgumentException) { }
+try { await management.UpdateConfigurationAsync(testVm, baseline.Digest, new Dictionary<string, string> { { "delete", "bios" } }); throw new Exception("Unrelated property accepted"); } catch (ArgumentException) { }
 var result = await management.GetJobAsync(new("task-node", "UPID:task-node:test:"));
 Check(result.ExitStatus != "OK" && result.Status == "stopped", "Failed task treated as success");
 Console.WriteLine("PASS: current/paused state, all four power endpoints, no forced shutdown fallback, task node and failure status, changed-only config, RAM attribute preservation, balloon bound, digest and configuration allowlist.");
@@ -160,13 +166,15 @@ using(var detectApi=new ProxmoxApi("https://pve.example.test",new Fake(req=>{
  return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK){Content=new StringContent("{\"data\":{\"vga\":\"qxl\"}}")});
 })))Check((await detectApi.GetConsoleInfoAsync(testVm)).HasSpice,"Current VGA detection failed");
 Console.WriteLine("PASS: templates filtered from import/resolve; retained for inventory; QXL variants/default/serial detection; template/headless/manual mismatch guards; current=1 configuration.");
-var requiredRights = "\"VM.Audit\":0,\"VM.Console\":0,\"VM.PowerMgmt\":0,\"VM.Config.CPU\":0,\"VM.Config.Memory\":0,\"VM.Config.Options\":0,\"VM.Config.Network\":0";
+var requiredRights = "\"VM.Audit\":0,\"VM.Console\":0,\"VM.PowerMgmt\":0,\"VM.Config.CPU\":0,\"VM.Config.Memory\":0,\"VM.Config.Options\":0,\"VM.Config.Network\":0,\"VM.Config.HWType\":0,\"VM.Config.Disk\":0,\"VM.Config.CDROM\":0";
 var testRequests = new List<string>();
 using (var probe = new ProxmoxApi("https://pve.example.test", new Fake(req => {
     Check(req.Method == HttpMethod.Get, "Connection test must be read-only");
     Check(req.Headers.GetValues("Authorization").Single() == "PVEAPIToken=test@pve!probe=synthetic-probe-secret", "Probe token missing");
     var path = req.RequestUri!.PathAndQuery; testRequests.Add(path);
-    var body = path.Contains("resources") ? "{\"data\":[{\"type\":\"qemu\",\"vmid\":101,\"node\":\"n\",\"name\":\"Full\"},{\"type\":\"qemu\",\"vmid\":102,\"node\":\"n\",\"name\":\"Limited\"},{\"type\":\"qemu\",\"vmid\":103,\"node\":\"n\",\"template\":1}]}" :
+    var body = path.Contains("/nodes/n/storage") ? "{\"data\":[{\"active\":1,\"storage\":\"local-lvm\"}]}" :
+        path.Contains("local-lvm") ? "{\"data\":{\"/storage/local-lvm\":{\"Datastore.Audit\":0}}}" :
+        path.Contains("resources") ? "{\"data\":[{\"type\":\"qemu\",\"vmid\":101,\"node\":\"n\",\"name\":\"Full\"},{\"type\":\"qemu\",\"vmid\":102,\"node\":\"n\",\"name\":\"Limited\"},{\"type\":\"qemu\",\"vmid\":103,\"node\":\"n\",\"template\":1}]}" :
         path.Contains("101") ? "{\"data\":{\"/vms/101\":{" + requiredRights + "}}}" :
         path.Contains("102") ? "{\"data\":{\"/vms/102\":{\"VM.Console\":1}}}" :
         "{\"data\":{\"/vms\":{\"VM.Console\":1,\"VM.Audit\":0}}}";
@@ -175,8 +183,9 @@ using (var probe = new ProxmoxApi("https://pve.example.test", new Fake(req => {
     probe.UseToken("test@pve!probe", "synthetic-probe-secret");
     var report = await probe.TestConnectionAsync();
     Check(report.Contains("Full application permissions: 1 of 2") && report.Contains("VM 101 (Full): All required"), "Non-propagating per-VM permissions rejected");
+    Check(report.Contains("local-lvm on n: Missing Datastore.AllocateSpace"), "Storage permission report incorrect");
     Check(report.Contains("Available: Console") && report.Contains("Not enabled for all VMs: Status"), "Inheritance reporting incorrect");
-    Check(report.Contains("VM 102 (Limited): Missing: Status") && report.Contains("VM.Config.Memory"), "Missing rights not listed");
+    Check(report.Contains("VM 102 (Limited): Missing: Status") && report.Contains("Audio, serial and USB devices [VM.Config.HWType]") && report.Contains("Repair permissions"), "Missing rights not listed");
     Check(!report.Contains("synthetic-probe-secret") && !testRequests.Any(p=>p.Contains("103")), "Secret exposed or template checked");
 }
 using (var emptyProbe = new ProxmoxApi("https://pve.example.test", new Fake(req => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) {
@@ -194,6 +203,13 @@ using (var failedPermissions = new ProxmoxApi("https://pve.example.test", new Fa
 Console.WriteLine("PASS: read-only connection test; token header; inherited versus per-VM rights; missing capabilities; template exclusion; empty inventory; authentication and permission failures; secret exclusion.");
 var networkRaw="virtio=AA:BB:CC:DD:EE:FF,bridge=vmbr0,tag=30,trunks=40;50,firewall=1,queues=4,rate=10,mtu=9000,future=keep";
 var network=new VmNetwork(networkRaw);
+Check(network.ChangeAdapter("vmbr0",true,"virtio","AA:BB:CC:DD:EE:FF","30",true,"10","4","9000")==networkRaw,"Unchanged network fields rewrote the adapter");
+var editedNic=network.ChangeAdapter("vmbr1",false,"e1000e","","4094",false,"2,5","2","");
+Check(VmNetwork.Equivalent("e1000e=02:11:22:33:44:55,bridge=vmbr1,tag=4094,queues=2,rate=2.5,trunks=40;50,future=keep,link_down=1",editedNic),"Network option edits or automatic MAC readback failed");
+foreach(var invalid in new[]{("4095","1","4","1500"),("1","-1","4","1500"),("1","1","65","1500"),("1","1","4","575")}){
+    try{network.ChangeAdapter("vmbr0",true,"virtio","",""+invalid.Item1,true,invalid.Item2,invalid.Item3,invalid.Item4);throw new Exception("Invalid network option accepted");}
+    catch(ArgumentException){}
+}
 Check(network.Connected && network.Bridge=="vmbr0","Default cable state or bridge wrong");
 Check(network.Change("vmbr0",true)==networkRaw,"Unchanged NIC would be rewritten");
 var changedNetwork=network.Change("vmbr1",false);
@@ -203,12 +219,31 @@ Check(!new VmNetwork("e1000=AA:BB:CC:DD:EE:FF,link_down=1").Connected,"Disconnec
 Check(new VmNetwork(network.Change("",true)).Bridge=="","Blank bridge not removed");
 Check(VmNetwork.Equivalent(networkRaw,string.Join(",",networkRaw.Split(',').Reverse())+",link_down=0"),"Reordered/default readback not recognized");
 Check(!VmNetwork.Equivalent(networkRaw,changedNetwork),"Different network readback accepted");
+var requestedNic=new VmNetwork("virtio").Change("vmbr1",false);
+Check(VmNetwork.Equivalent("virtio=02:11:22:33:44:55,link_down=1,bridge=vmbr1",requestedNic),"Generated MAC readback failed");
+await management.UpdateConfigurationAsync(testVm,baseline.Digest,new Dictionary<string,string>{{"net1",requestedNic}});
+Check(Uri.UnescapeDataString(managementCalls.Last().Body).Contains("net1=virtio,bridge=vmbr1,link_down=1"),"New network adapter missing");
 foreach(var invalid in new[]{"vmbr0,tag=99","bridge with spaces","vmbr0\n"}) {
     if(invalid.EndsWith('\n'))continue; // UI whitespace trim is intentional.
     try { network.Change(invalid,true);throw new Exception("Invalid bridge accepted"); }catch(ArgumentException){}
 }
 await management.UpdateConfigurationAsync(testVm,baseline.Digest,new Dictionary<string,string>{{"net0",changedNetwork}});
 Check(managementCalls.Last().Body.Contains("net0=") && managementCalls.Last().Body.Contains("digest="),"Network write missing digest or interface");
+await management.UpdateConfigurationAsync(testVm,baseline.Digest,new Dictionary<string,string>{{"audio0",VmConfiguration.SpiceAudio},{"serial1","socket"}});
+Check(Uri.UnescapeDataString(managementCalls.Last().Body).Contains("audio0="+VmConfiguration.SpiceAudio),"Audio device request missing");
+await management.UpdateConfigurationAsync(testVm,baseline.Digest,new Dictionary<string,string>{{"delete","audio0,serial1"}});
+Check(Uri.UnescapeDataString(managementCalls.Last().Body).Contains("delete=audio0,serial1"),"Device removal request missing");
+var withAudio=new VmConfiguration("",new(){{"audio0","ich9-intel-hda,driver=spice"}});
+var drives=new VmConfiguration("",new(){{"scsi1","local-lvm:vm-101-disk-1,size=32G"},{"ide2","none,media=cdrom"},{"tpmstate0","local-lvm:vm-101-disk-2,size=4M,version=v2.0"},{"usb0","host=spice"}});
+Check(drives.Matches("scsi1","local-lvm:32") && drives.Matches("ide2","none,media=cdrom") && drives.Matches("tpmstate0","local-lvm:1,version=v2.0") && drives.Matches("usb0","spice"),"Drive/USB readback failed");
+await management.UpdateConfigurationAsync(testVm,baseline.Digest,new Dictionary<string,string>{{"scsi1","local-lvm:32"},{"usb0","spice"}});
+Check(Uri.UnescapeDataString(managementCalls.Last().Body).Contains("scsi1=local-lvm:32"),"Disk allocation request missing");
+var withAgent=new VmConfiguration("",new(){{"agent","1,type=isa,freeze-fs-on-backup=0"}});
+Check(withAgent.AgentEnabled && withAgent.AgentValue(false)=="enabled=0,type=isa,freeze-fs-on-backup=0","Disabling agent lost advanced settings");
+Check(withAgent.Matches("agent","enabled=1,freeze-fs-on-backup=0,type=isa") && !baseline.AgentEnabled,"Agent readback or absent default incorrect");
+await management.UpdateConfigurationAsync(testVm,baseline.Digest,new Dictionary<string,string>{{"agent",baseline.AgentValue(true)}});
+Check(Uri.UnescapeDataString(managementCalls.Last().Body).Contains("agent=enabled=1"),"Guest agent activation missing");
+Check(withAudio.Matches("audio0",VmConfiguration.SpiceAudio) && !withAudio.Matches("delete","audio0,serial1") && baseline.Matches("delete","audio0,serial1"),"Hardware readback mismatch");
 foreach(var invalidKey in new[]{"net-1","net0.foo","network","net01"}) {
     try {await management.UpdateConfigurationAsync(testVm,baseline.Digest,new Dictionary<string,string>{{invalidKey,networkRaw}});throw new Exception("Invalid network key allowed");}catch(ArgumentException){}
 }
@@ -235,19 +270,3 @@ sealed class Fake(Func<HttpRequestMessage, Task<HttpResponseMessage>> respond) :
 {
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) => respond(request);
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

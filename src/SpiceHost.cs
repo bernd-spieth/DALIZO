@@ -19,7 +19,22 @@ internal sealed class SpiceHost : WindowsFormsHost
     public event Action<string>? ClipboardStateChanged;
     public bool CanSendKeys=>!disposed&&view.CanInput;
     public bool SessionOpen=>!disposed&&view.Backend.SessionOpen;
+    internal Task<List<SpiceWorker.UsbChoice>> ListUsb()=>view.Backend.ListUsb();
+    internal Task ToggleUsb(SpiceWorker.UsbChoice choice)=>view.Backend.ToggleUsb(choice);
     internal string ConnectionStatus=>view.Backend.Status;
+    internal string SessionPhase => !SessionOpen ? "Console disconnected" : view.Backend.DisplayFrameReceived
+        ? "Console ready" : view.Backend.MainConnected ? "Waiting for first image" : "Connecting";
+    internal string? ActiveAudioDevice {get;set;}
+    internal string MediaDetails {
+        get {
+            string audio=view.Backend.AudioState;
+            if(audio!="Disabled" && ActiveAudioDevice=="")
+                audio="No active audio device in Proxmox (VM settings > Hardware)";
+            else if(audio!="Disabled" && ActiveAudioDevice?.Split(',').Contains("driver=none")==true)
+                audio="Proxmox audio backend is set to none";
+            return $"Audio: {audio} · Video codec preference: {view.Backend.VideoPreference}";
+        }
+    }
     public bool HasDisplay=>SessionOpen;
     public bool HasFrame=>!disposed&&view.HasFrame;
     public bool GuestAgentConnected=>view.Backend.GuestAgentConnected;
@@ -54,7 +69,7 @@ internal sealed class SpiceHost : WindowsFormsHost
         if(runtime==null||!N.SetDllDirectory(runtime))throw new InvalidOperationException("Install VirtViewer x64 or set PROXMOX_SPICE_RUNTIME to its bin directory.");
         initialized=true;
     }
-    public void Connect(SpiceConfig c){if(disposed)throw new ObjectDisposedException(nameof(SpiceHost));view.Connect(new(){{"host",c.Host},{"tls-port",c.TlsPort},{"password",c.Password},{"proxy",c.Proxy},{"ca",c.Ca},{"host-subject",c.Subject}});}
+    public void Connect(SpiceConfig c, bool audioEnabled=true, bool preferMjpeg=true){if(disposed)throw new ObjectDisposedException(nameof(SpiceHost));view.Connect(new(){{"host",c.Host},{"tls-port",c.TlsPort},{"password",c.Password},{"proxy",c.Proxy},{"ca",c.Ca},{"host-subject",c.Subject}}, audioEnabled, preferMjpeg);}
     public void Disconnect(){if(disposed)return;view.Disconnect();InputAvailabilityChanged?.Invoke(false);}
     public void SetClipboardSharing(bool value)=>view.SetClipboard(value,imageSharing);
     public void SetExtraSharing(bool images,bool files){imageSharing=images;FileTransferAllowed=files;view.FilesAllowed=files;view.SetClipboard(view.Sharing,images);}

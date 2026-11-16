@@ -57,6 +57,7 @@ public partial class MainWindow
     }
     void CloseConsole(Guid id)
     {
+        stoppedConsoles.Remove(id);
         if (!consoles.Remove(id, out var session)) return;
         recentConsoles.Remove(id);
         if (host == session.Spice && host != null) host = null;
@@ -79,7 +80,7 @@ public partial class MainWindow
         if(VmList==null)return;
         foreach(var row in VmList.Items.OfType<VmRow>())
             row.SetSessionState(consoles.TryGetValue(row.Id,out var session)
-                ? session.Open ? "Console open" : "Console disconnected" : "");
+                ? session.Spice?.SessionPhase ?? (session.Open ? "Console open" : "Console disconnected") : "");
     }
     void RefreshConsoleSessions()
     {
@@ -90,6 +91,18 @@ public partial class MainWindow
     }
     void UpdateConnectButtons()
     {
+        if(SpiceSessionBar!=null){
+            bool visible=targetVm!=null && consoles.TryGetValue(targetVm.Id,out var current) &&
+                current.Spice!=null && current.Spice==host && ConsoleArea.Child==consoleDeck;
+            SpiceSessionBar.Visibility=visible ? Visibility.Visible : Visibility.Collapsed;
+            if(visible && host!=null){
+                SpicePhase.Text=host.SessionPhase;
+                UsbDevicesButton.IsEnabled=host.SessionOpen && !busy;
+                SpiceMedia.Text=host.SessionOpen ? host.MediaDetails : host.ConnectionStatus;
+                RetrySpice.Visibility=host.SessionOpen ? Visibility.Collapsed : Visibility.Visible;
+                RetrySpice.IsEnabled=!busy && !closing;
+            }
+        }
         UpdateFeatureIndicators();
         if(VmPropertiesButton!=null)VmPropertiesButton.IsEnabled=HasDisplayedConsole && !busy;
         if(ManagementToggle!=null) {
@@ -106,6 +119,29 @@ public partial class MainWindow
             bool hasSession=consoles.ContainsKey(row.Id);
             row.SetActions(!closing && !busy, !closing && !busy && hasSession);
         }
+    }
+    async void RetrySpiceClicked(object sender,RoutedEventArgs e)
+    {
+        if(targetVm is SavedVm vm && host is {SessionOpen:false})await ConnectVm(vm,fresh:true);
+    }
+    async void UsbDevicesClicked(object sender,RoutedEventArgs e){
+        if(host is not {} source || !source.SessionOpen)return;
+        try{
+            var devices=await source.ListUsb();
+            if(source!=host || !source.SessionOpen)return;
+            var dialog=new EditorDialog(this,"SPICE USB devices",devices.Count>0?"Apply":"Close");
+            dialog.Note("Add a SPICE USB port in VM settings > Hardware. Select a local USB device to redirect it, or select a redirected device to release it.");
+            if(devices.Count==0)dialog.Note("No local USB devices available. Check VirtViewer and the UsbDk driver.");
+            else{
+                var list=dialog.Choice("Local USB device",devices.Cast<object>().ToArray(),devices[0]);
+                list.DisplayMemberPath="Caption";
+                dialog.ValidateAsync=async()=>{
+                    if(host!=source || !source.SessionOpen)throw new InvalidOperationException("Session closed.");
+                    await source.ToggleUsb((SpiceWorker.UsbChoice)list.SelectedItem);return true;
+                };
+            }
+            dialog.ShowDialog();
+        }catch(Exception ex){ErrorDetails.Show(this,"USB devices unavailable.",ex);}
     }
     bool HasDisplayedConsole => !closing && targetVm!=null
         && consoles.TryGetValue(targetVm.Id,out var displayed) && displayed.Open

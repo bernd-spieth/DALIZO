@@ -13,6 +13,18 @@ public partial class MainWindow
         public string Label => Fresh ? State!.Label : Error ?? "Stale status";
     }
     readonly Dictionary<Guid, RuntimeEntry> runtime = new();
+    readonly HashSet<Guid> stoppedConsoles=new();
+    void ObservePowerState(Guid id,string? state)
+    {
+        if(state=="stopped" && consoles.ContainsKey(id))stoppedConsoles.Add(id);
+    }
+    async Task RestoreStartedConsole()
+    {
+        if(busy || closing || targetVm is not SavedVm vm || !stoppedConsoles.Contains(vm.Id))return;
+        if(!runtime.TryGetValue(vm.Id,out var entry) || !entry.Fresh || entry.Label!="Running")return;
+        stoppedConsoles.Remove(vm.Id);
+        await ConnectVm(vm,fresh:true);
+    }
     readonly CancellationTokenSource monitoringLifetime = new();
     DispatcherTimer? monitorTimer;
     SavedVm? targetVm;
@@ -73,7 +85,10 @@ public partial class MainWindow
             // An earlier request must not overwrite the readback of a newer power action.
             if (!closing && data.Vms.Contains(selected) &&
                 (!runtime.TryGetValue(selected.Id, out var newer) || newer.Checked <= started))
+            {
                 runtime[selected.Id] = new(state, DateTimeOffset.UtcNow, null);
+                ObservePowerState(selected.Id,state.Status);
+            }
         }
         catch
         {
@@ -113,6 +128,7 @@ public partial class MainWindow
                     {
                         var vm = all.FirstOrDefault(v => v.Id == saved.VmId);
                         runtime[saved.Id] = vm == null ? new(null, DateTimeOffset.UtcNow, "Not visible") : new(new(vm.Status, "", 0), DateTimeOffset.UtcNow, null);
+                        ObservePowerState(saved.Id,vm?.Status);
                     }
                     // Publish the cheap bulk status before permissions/configuration requests.
                     Filter(); UpdateRuntimeHeader();
@@ -129,6 +145,7 @@ public partial class MainWindow
             }
         }
         finally { await targetRefresh; polling = false; if (!closing) { Filter(); UpdateRuntimeHeader(); } }
+        await RestoreStartedConsole();
     }
     void UpdateRuntimeHeader()
     {
@@ -184,8 +201,10 @@ public partial class MainWindow
             var job = await api.PowerAsync(current, action, ct);
             await WaitForJob(api, job, ct);
             current = await api.ResolveVmAsync(saved.VmId, ct); state = await api.GetRuntimeAsync(current, ct); runtime[saved.Id] = new(state, DateTimeOffset.UtcNow, null);
+            ObservePowerState(saved.Id,state.Status);
             if (action == "start")
             {
+                if(consoles.ContainsKey(saved.Id))stoppedConsoles.Add(saved.Id);
                 var deadline = DateTimeOffset.UtcNow.AddSeconds(20);
                 while (state.Label != "Running" && DateTimeOffset.UtcNow < deadline)
                 {
@@ -245,54 +264,204 @@ public partial class MainWindow
                 return;
             }
 
-            bool canEditNetwork=false;
-            try { canEditNetwork=await api.CanEditNetworkAsync(saved.VmId,ct); }
+            bool canEditNetwork=false,canEditHardware=false,canEditOptions=false,canEditMemory=false,canDisk=false,canCdrom=false,canPower=false,canStartup=false;
+            try { (canEditNetwork,canEditHardware,canEditOptions,canEditMemory,canDisk,canCdrom,canPower)=await api.GetDevicePermissionsAsync(saved.VmId,ct);
+                canStartup=canEditOptions && await api.CanEditStartupAsync(ct); }
             catch(System.Net.Http.HttpRequestException) { }
             IReadOnlyList<string> bridges=Array.Empty<string>();bool bridgesAvailable=false;
-            if(original.Values.Keys.Any(VmNetwork.IsKey)) {
+            if(canEditNetwork || original.Values.Keys.Any(VmNetwork.IsKey)) {
                 using var bridgeTimeout=CancellationTokenSource.CreateLinkedTokenSource(ct);bridgeTimeout.CancelAfter(TimeSpan.FromSeconds(8));
                 try {bridges=await api.GetBridgesAsync(current.Node,bridgeTimeout.Token);bridgesAvailable=true;}
                 catch(OperationCanceledException) when(ct.IsCancellationRequested){throw;}
                 catch { }
             }
-            var dialog = new EditorDialog(this, $"VM settings · {saved.Name} · {server.Name}");
+            var dialog = new EditorDialog(this, $"VM settings · {saved.Name} · {server.Name}", "OK");
             dialog.Tab("General");
             dialog.Note("Server configuration includes pending changes. The local display name is independent.");
             var name = dialog.Text("VM name in Proxmox", original.Get("name"));
-            var sockets = dialog.Text("CPU sockets", original.Number("sockets", 1).ToString());
-            var cores = dialog.Text("Cores per socket", original.Number("cores", 1).ToString());
-            var ram = dialog.Text("RAM (MiB)", original.MemoryMiB.ToString());
+            dialog.Help("Set the VM name shown in Proxmox. Use the Console tab to choose a separate display name in DALIZO.");
             var description = dialog.Text("Description", original.Get("description")); description.AcceptsReturn = true; description.TextWrapping = TextWrapping.Wrap; description.Height = 90; description.VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
-            dialog.Note("Saving changes the VM in Proxmox. CPU/RAM changes may require a restart. The application will not restart the VM automatically.");
-            dialog.Tab("Network");
-            dialog.Note("Network interfaces — virtual cable state, not a guest connectivity test. Current shows the active configuration; editable values include pending changes.");
-            var networkEditors=new List<(string Key,VmNetwork Original,ComboBox Bridge,CheckBox Connected)>();
+            dialog.Help("Save notes about this VM in Proxmox, such as its purpose or owner.");
+            var agent=dialog.Check("Enable QEMU Guest Agent",original.AgentEnabled);
+            agent.IsEnabled=canEditOptions;
+            dialog.Hint("Active VM configuration: "+(active.AgentEnabled?"enabled":"disabled")+(active.AgentEnabled!=original.AgentEnabled?" · Change pending":""));
+            dialog.Help("Enable the guest-agent channel in Proxmox. Install and start the QEMU Guest Agent service inside the guest OS. Pending changes may require shutting down and starting the VM.");
+            if(!canEditOptions)dialog.Hint("Editing this option requires VM.Config.Options.");
+            dialog.Tab("Hardware");
+            dialog.Note("VM protection: "+(original.Number("protection",0)==1?"Enabled":"Disabled"));
+            var addHardware=new Button {Content="Add hardware ▾",HorizontalAlignment=HorizontalAlignment.Left,
+                ToolTip="Choose a device to add to the VM. Select OK to save the change."};
+            var types=new ContextMenu {PlacementTarget=addHardware,Placement=System.Windows.Controls.Primitives.PlacementMode.Bottom};
+            var addAudio=new MenuItem {Header="Audio device",ToolTip="Add an Intel HD Audio device for SPICE playback. Select OK to save it."};
+            var addSerial=new MenuItem {Header="Serial port (socket)",ToolTip="Add the next available serial socket for a terminal connection. Select OK to save it."};
+            types.Items.Add(addAudio);
+            types.Items.Add(addSerial);
+            var addNetwork=new MenuItem {Header="Network adapter",ToolTip="Choose an adapter model and the network to connect it to."};
+            types.Items.Add(addNetwork);
+            addHardware.ContextMenu=types;
+            addHardware.Click+=(_,_)=>types.IsOpen=true;
+            dialog.AddField(addHardware);
+            var stagedNetworkRows=new StackPanel();
+            dialog.AddField(stagedNetworkRows);
+            var stagedNetworks=new Dictionary<string,string>();
+            var removedNetworks=new HashSet<string>();
+            dialog.Note("OK saves all your edits. Cancel discards them. Some hardware changes take effect after you shut down the VM and start it again.");
+            if(!canEditHardware)dialog.Note("Audio and serial devices are read-only. Editing them requires VM.Config.HWType on this VM. For a DALIZO-managed account, open Options > Manage servers > Repair permissions.");
+
+            string Cpu(VmConfiguration cfg)=>$"{cfg.Number("sockets",1)} socket(s), {cfg.Number("cores",1)} core(s) per socket";
+            dialog.HardwareSection("Processors",Cpu(active),Cpu(original));
+            var sockets = dialog.Text("CPU sockets", original.Number("sockets", 1).ToString());
+            dialog.Help("Choose how many virtual processor sockets the guest sees. Together with cores per socket, this sets the virtual CPU topology.");
+            var cores = dialog.Text("Cores per socket", original.Number("cores", 1).ToString());
+            dialog.Help("Set the number of cores in each virtual socket. For example, two sockets with two cores each provide four virtual CPU cores.");
+            dialog.HardwareSection("Memory",active.MemorySummary,original.MemorySummary);
+            var ram = dialog.Text("RAM (MiB)", original.MemoryMiB.ToString());
+            dialog.Help("Enter the configured memory in MiB (1024 MiB = 1 GiB). The value must be at least the configured ballooning minimum.");
+            var balloon=dialog.Check("Enable memory ballooning",original.BalloonEnabled);
+            dialog.Help("Ballooning lets Proxmox reclaim RAM from a running VM and return it later. When the host needs memory, it asks the balloon driver inside the guest to reserve some of the guest's memory pages. The host can then reuse the physical RAM behind those pages. When the balloon shrinks, the guest can use those pages again. This requires a working balloon driver in the guest.");
+            var minimum=dialog.Text("Minimum memory (MiB)",original.Number("balloon",-1)>0?original.Get("balloon"):"");
+            dialog.Help("Set the lowest memory target Proxmox can request. For example, with 8192 MiB of RAM and a 4096 MiB minimum, Proxmox can ask the guest to release up to 4096 MiB. Choose a minimum that can support the guest's workload. Leave the field blank to use the configured RAM as the minimum.");
+            ram.IsEnabled=balloon.IsEnabled=canEditMemory;
+            minimum.IsEnabled=canEditMemory && original.BalloonEnabled;
+            balloon.Checked+=(_,_)=>minimum.IsEnabled=canEditMemory;
+            balloon.Unchecked+=(_,_)=>minimum.IsEnabled=false;
+            if(!canEditMemory)dialog.Hint("Editing memory requires VM.Config.Memory.");
+            var networkEditors=new List<(string Key,VmNetwork Original,Func<string> Read)>();
             foreach(var key in original.Values.Keys.Concat(active.Values.Keys).Where(VmNetwork.IsKey).Distinct().OrderBy(k=>k.Length).ThenBy(k=>k)) {
                 var activeRaw=active.Get(key);
-                dialog.Note(key + " · Current: " + (activeRaw=="" ? "Not present" : new VmNetwork(activeRaw).Summary));
+
                 var raw=original.Get(key);
+                var networkSection=dialog.HardwareSection("Network adapter · "+key,activeRaw==""?"Absent":new VmNetwork(activeRaw).Summary,raw==""?"Absent":new VmNetwork(raw).Summary);
                 if(raw=="") { dialog.Note("Removal pending; edit this interface in Proxmox.");continue; }
                 var network=new VmNetwork(raw);
-                dialog.Note(network.Details);
-                var bridge=AddBridgeChoice(dialog,key,network.Bridge,bridges);
-                var connected=dialog.Check(key+" · Virtual cable connected",network.Connected);
-                bridge.IsEnabled=connected.IsEnabled=canEditNetwork;
-                networkEditors.Add((key,network,bridge,connected));
+                var body=(StackPanel)networkSection.Content;
+                var firstField=body.Children.Count;
+                var read=NetworkFields(dialog,key,network,bridges);
+                var controls=body.Children.Cast<UIElement>().Skip(firstField).ToArray();
+                foreach(var control in controls)control.IsEnabled=canEditNetwork;
+                if(!bridgesAvailable)dialog.Hint("Network list unavailable. You can enter a bridge name.");
+                var removeNic=new Button {Content="×",ToolTip="Remove "+key,IsEnabled=canEditNetwork,HorizontalAlignment=HorizontalAlignment.Right};
+                SetDeviceAction(removeNic,"Remove "+key);
+                PutDeviceAction(networkSection,removeNic);
+                removeNic.Click+=(_,_)=>{
+                    bool remove=removedNetworks.Add(key);
+                    if(!remove)removedNetworks.Remove(key);
+                    SetDeviceAction(removeNic,remove?"Undo removal of "+key:"Remove "+key,remove);
+                    foreach(var control in controls)control.IsEnabled=!remove;
+                };
+                if(!canEditNetwork)dialog.Hint("Editing requires VM.Config.Network.");
+                networkEditors.Add((key,network,read));
             }
-            if(networkEditors.Count==0)dialog.Note("No editable network interfaces configured.");
-            else dialog.Help(bridgesAvailable?(bridges.Count>0?$"Bridge choices from node {current.Node}. Only networks available to this VM and connection are listed. Missing networks? Open Options > Manage servers > Repair permissions, then reopen this window. The current network remains available in the list.":"Proxmox did not return any available networks. The list shows the current network only. Try Options > Manage servers > Repair permissions, then reopen this window."):"The network list could not be loaded. Check the server connection and permissions. The current value is kept, and you can still enter a network name.");
-            if(!canEditNetwork)dialog.Note("Network editing is read-only: VM.Config.Network is missing or could not be verified.");
-            dialog.Note("Changing the bridge or cable state can interrupt guest networking. Some changes may remain pending until a restart. Bridge/VNet access may also require SDN.Use.");
-            var readLocal = AddConsoleSettings(dialog, saved);
+            var hardwareEditors=new List<(string Key,string Value,GroupBox Section,bool Supported,Button Action)>();
+            var desiredDevices=new HashSet<string>(original.Values.Keys);
+            bool Available(string key)=>!desiredDevices.Contains(key) && original.Get(key)=="" && active.Get(key)=="";
+            string? FreeNetworkSlot()=>Enumerable.Range(0,32).Select(i=>"net"+i).FirstOrDefault(k=>Available(k) && !stagedNetworks.ContainsKey(k));
+            void RefreshDeviceTypes(){
+                addAudio.IsEnabled=canEditHardware && Available("audio0");
+                addSerial.IsEnabled=canEditHardware && hardwareEditors.Any(d=>VmConfiguration.IsSerialSocketSlot(d.Key) && Available(d.Key));
+                addNetwork.IsEnabled=canEditNetwork && FreeNetworkSlot()!=null;
+                addHardware.IsEnabled=canDisk || canCdrom || canEditHardware || addNetwork.IsEnabled;
+            }
+            addNetwork.Click+=(_,_)=>{
+                if(!canEditNetwork || FreeNetworkSlot() is not string key)return;
+                var picker=new EditorDialog(dialog,"Add network adapter · "+key,"Add");
+                var read=NetworkFields(picker,key,new VmNetwork("virtio,firewall=1"),bridges);
+                string config="";
+                picker.Validate=()=>{config=read();return true;};
+                if(picker.ShowDialog()!=true)return;
+                stagedNetworks.Add(key,config);
+                var row=new DockPanel {Margin=new Thickness(0,4,0,4)};
+                var cancel=new Button {Content="×",ToolTip="Cancel addition of "+key};
+                SetDeviceAction(cancel,"Cancel addition of "+key,true);
+                DockPanel.SetDock(cancel,Dock.Right);row.Children.Add(cancel);
+                row.Children.Add(new TextBlock {Text=$"{key} · {new VmNetwork(config).Model} · {new VmNetwork(config).Summary} · To be added",TextWrapping=TextWrapping.Wrap});
+                stagedNetworkRows.Children.Add(row);
+                cancel.Click+=(_,_)=>{stagedNetworks.Remove(key);stagedNetworkRows.Children.Remove(row);RefreshDeviceTypes();};
+                RefreshDeviceTypes();
+            };
+            void AddDevice(string key,string label,string value){
+                string configured=original.Get(key), running=active.Get(key);
+                var section=dialog.HardwareSection(label,running==""?"Absent":running,configured==""?"Absent":configured);
+                section.Visibility=running.Length>0 || configured.Length>0 ? Visibility.Visible : Visibility.Collapsed;
+                bool supported=key=="audio0" || (configured is "" or "socket" && running is "" or "socket");
+                var action=new Button {Width=30,Height=28,Padding=new Thickness(0),FontSize=18,
+                    HorizontalAlignment=HorizontalAlignment.Right,IsEnabled=canEditHardware,
+                    Visibility=supported && (configured.Length>0 || running.Length==0) ? Visibility.Visible : Visibility.Collapsed};
+                SetDeviceAction(action,"Remove "+label);
+                PutDeviceAction(section,action);
+                action.Click+=(_,_)=>{
+                    if(desiredDevices.Remove(key)){
+                        if(configured.Length==0)section.Visibility=Visibility.Collapsed;
+                        else {SetDeviceAction(action,"Undo removal of "+label,true);section.Header=label+" · To be removed";}
+                    }else{desiredDevices.Add(key);SetDeviceAction(action,"Remove "+label);section.Header=label;}
+                    RefreshDeviceTypes();
+                };
+                if(!supported)dialog.Hint("Host serial devices are managed in Proxmox.");
+                hardwareEditors.Add((key,value,section,supported,action));
+            }
+            AddDevice("audio0","Audio device (audio0)",VmConfiguration.SpiceAudio);
+            dialog.Help("New audio devices use Intel HD Audio (ICH9) with the SPICE backend.");
+            for(int i=0;i<4;i++)AddDevice("serial"+i,$"Serial port {i} (socket)","socket");
+            void StageDevice(string key){
+                if(!canEditHardware || !Available(key))return;
+                desiredDevices.Add(key);
+                var editor=hardwareEditors.First(d=>d.Key==key);
+                var section=editor.Section;
+                SetDeviceAction(editor.Action,"Cancel addition of "+key,true);
+                section.Header=key=="audio0"?"Audio device (audio0) · To be added":$"Serial port ({key}) · To be added";
+                section.Visibility=Visibility.Visible;
+                section.BringIntoView();
+                RefreshDeviceTypes();
+            }
+            addAudio.Click+=(_,_)=>StageDevice("audio0");
+            addSerial.Click+=(_,_)=>{
+                var free=hardwareEditors.FirstOrDefault(d=>VmConfiguration.IsSerialSocketSlot(d.Key) && Available(d.Key));
+                if(free.Key!=null)StageDevice(free.Key);
+            };
+            RefreshDeviceTypes();
+            var driveChanges=await AddDriveSettings(dialog,types,original,active,current,api,canDisk,canCdrom,canEditHardware,ct);
+
+            var enhancements=original.Get("spice_enhancements").Split(',',StringSplitOptions.RemoveEmptyEntries);
+            var streaming=enhancements.FirstOrDefault(p=>p.StartsWith("videostreaming="))?.Split('=')[1]??"off";
+            ComboBox streamBox=null!;
+            var readLocal=AddConsoleSettings(dialog,saved,()=>{
+            streamBox=dialog.Choice("Video streaming (Proxmox VM)",new[]{"off","filter","all"}.Append(streaming).Distinct().Cast<object>().ToArray(),streaming);
+            streamBox.DisplayMemberPath="";
+            dialog.Help("Choose the VM's SPICE streaming policy. Filter detects video regions. All requests streaming for all regions. Off disables video streaming. The server checks write access to spice_enhancements and may require root.",false);
+            });
+            var readOptions=AddVmOptions(dialog,original,canEditOptions,canEditHardware,canDisk,canPower,canStartup);
             SavedVm? local = null;
             Dictionary<string, string>? changes = null;
             dialog.Validate = () =>
             {
                 if (!int.TryParse(sockets.Text, out var s) || !int.TryParse(cores.Text, out var c) || !int.TryParse(ram.Text, out var m)) throw new ArgumentException("Enter CPU and RAM values as whole numbers.");
                 local = readLocal();
-                changes = original.Changes(name.Text.Trim(), description.Text, c, s, m);
+                int requestedMinimum=balloon.IsChecked==true?-1:0;
+                if(requestedMinimum==-1 && !string.IsNullOrWhiteSpace(minimum.Text) &&
+                    (!int.TryParse(minimum.Text,out requestedMinimum) || requestedMinimum<1))
+                    throw new ArgumentException("Enter a positive minimum in MiB or leave the field blank.");
+                changes = original.Changes(name.Text.Trim(), description.Text, c, s, m,requestedMinimum);
+                bool enableAgent=agent.IsChecked==true;
+                if(canEditOptions && enableAgent!=original.AgentEnabled)changes["agent"]=original.AgentValue(enableAgent);
+                var removed=changes.TryGetValue("delete",out var memoryDeletes)?memoryDeletes.Split(',').ToList():new List<string>();
+                readOptions(changes,removed);
+                if((string)streamBox.SelectedItem!=streaming)
+                    changes["spice_enhancements"]=string.Join(",",enhancements.Where(p=>!p.StartsWith("videostreaming=")).Append("videostreaming="+streamBox.SelectedItem));
+                foreach(var (key,value,_,supported,_) in hardwareEditors){
+                    if(!canEditHardware || !supported || desiredDevices.Contains(key)==original.Values.ContainsKey(key))continue;
+                    if(desiredDevices.Contains(key))changes[key]=value;else removed.Add(key);
+                }
+                removed.AddRange(removedNetworks);
+                foreach(var (key,value) in driveChanges){
+                    if(value==null)removed.Add(key);else changes[key]=value;
+                }
+                if(removed.Count>0)changes["delete"]=string.Join(",",removed);
+                if(changes.TryGetValue("boot",out var order) && order[6..].Split(';').Intersect(removed).Any())
+                    throw new ArgumentException("Remove detached devices from the boot order.");
+                foreach(var (key,value) in stagedNetworks)changes[key]=value;
                 if(canEditNetwork)foreach(var editor in networkEditors) {
-                    var value=editor.Original.Change(editor.Bridge.Text,editor.Connected.IsChecked==true);
+                    if(removedNetworks.Contains(editor.Key))continue;
+                    var value=editor.Read();
                     if(value!=editor.Original.Raw)changes[editor.Key]=value;
                 }
                 return true;
@@ -304,9 +473,9 @@ public partial class MainWindow
             current = await api.ResolveVmAsync(saved.VmId, ct);
             Status("Saving configuration …"); var job = await api.UpdateConfigurationAsync(current, original.Digest, changes, ct); await WaitForJob(api, job, ct);
             current = await api.ResolveVmAsync(saved.VmId, ct); var readback = await api.GetConfigurationAsync(current, ct);
-            if (changes.Any(p => VmNetwork.IsKey(p.Key) ? !VmNetwork.Equivalent(readback.Get(p.Key),p.Value) : readback.Get(p.Key) != p.Value)) throw new InvalidOperationException("Save task finished, but readback does not match. Check the configuration in Proxmox.");
+            if (changes.Any(p => !readback.Matches(p.Key,p.Value))) throw new InvalidOperationException("Save task finished, but readback does not match. Check the configuration in Proxmox.");
             SaveConsoleSettings(saved, local);
-            Status("Configuration saved and read back. CPU/RAM/network changes may still be pending; restart the VM if required.");
+            Status("Configuration saved and read back. Check pending hardware changes before reconnecting.");
         });
         await PollStatus();
     }

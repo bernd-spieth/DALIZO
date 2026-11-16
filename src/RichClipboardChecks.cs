@@ -22,6 +22,7 @@ public partial class MainWindow
         var json=System.Text.Json.JsonSerializer.Serialize(vm);var read=System.Text.Json.JsonSerializer.Deserialize<SavedVm>(json)!;
         if(read.ClipboardEnabled||!read.ImageClipboardEnabled||!read.FileTransferEnabled)throw new Exception("Independent preferences lost.");
         var legacy=System.Text.Json.JsonSerializer.Deserialize<SavedVm>("{\"Id\":\""+vm.Id+"\",\"ServerId\":\""+vm.ServerId+"\",\"VmId\":101,\"Name\":\"Legacy\"}")!;
+        if(!legacy.SpiceAudioEnabled || !legacy.PreferSpiceMjpeg)throw new Exception("Incorrect legacy SPICE media defaults.");
         if(legacy.ImageClipboardEnabled||legacy.FileTransferEnabled)throw new Exception("Legacy profile unexpectedly enables extra sharing.");
         var file=Path.Combine(AppContext.BaseDirectory,"transfer-fixture.txt");File.WriteAllText(file,"DALIZO synthetic file-transfer fixture");
         if(SpiceWorker.ValidateTransferFiles(new[]{file,file}).Length!=1)throw new Exception("Duplicate files not filtered.");

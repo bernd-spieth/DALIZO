@@ -12,10 +12,20 @@ public partial class MainWindow
     async Task CheckVmFolders(ServerProfile server)
     {
         var original=data;var oldQuery=Search.Text;var oldSort=vmSort;
+        async Task OpenFolderList(){
+            // Modal dialogs can dismiss the floating list. Exercise the same
+            // foreground window and open list a user needs to select a folder.
+            Activate();
+            await Dispatcher.InvokeAsync(()=>{},DispatcherPriority.ApplicationIdle);
+            ShowSidebar(true);
+            SidebarPanel.UpdateLayout();
+            await Dispatcher.InvokeAsync(()=>{},DispatcherPriority.ApplicationIdle);
+            if(!SidebarOverlay.IsOpen)throw new InvalidOperationException("Folder test requires an open VM list. Window active: "+IsActive);
+        }
         try {
             data=new(1,original.Servers.ToList(),new(){new(Guid.NewGuid(),server.Id,92001,"Zulu",Folder:"QA Group"),new(Guid.NewGuid(),server.Id,92002,"Alpha",Folder:"QA Group"),new(Guid.NewGuid(),server.Id,92003,"Service",Folder:"Production"),new(Guid.NewGuid(),server.Id,92004,"Unassigned")});
-            vmSort=new("Name",System.ComponentModel.ListSortDirection.Ascending);Search.Text="";Filter();ApplyVmSort();ShowSidebar(true);UpdateLayout();
-            await Dispatcher.InvokeAsync(()=>{},DispatcherPriority.ApplicationIdle);
+            vmSort=new("Name",System.ComponentModel.ListSortDirection.Ascending);Search.Text="";Filter();ApplyVmSort();
+            await OpenFolderList();
             var groups=VmList.Items.Groups!.Cast<CollectionViewGroup>().ToArray();
             if(groups.Length!=3 || groups.Single(g=>(string)g.Name=="QA Group").Items.Cast<VmRow>().First().Name!="Alpha")throw new Exception("Folder grouping or member sorting failed.");
             IEnumerable<DependencyObject> Children(DependencyObject parent){for(int i=0;i<VisualTreeHelper.GetChildrenCount(parent);i++){var child=VisualTreeHelper.GetChild(parent,i);yield return child;foreach(var nested in Children(child))yield return nested;}}
@@ -45,6 +55,7 @@ public partial class MainWindow
             if(Children(ServerActions).OfType<Button>().Any(b=>b.Content as string=="New folder…"))throw new Exception("Standalone New folder button still visible.");
             var row=VmList.Items.OfType<VmRow>().Single(r=>r.VmId==92001);var rowMenu=BuildVmContext(row,null);
             if(!rowMenu.Items.OfType<MenuItem>().Select(i=>(string)i.Header).Contains("Move to folder…"))throw new Exception("VM context actions missing.");
+            await OpenFolderList();
             VmList.ContextMenu=rowMenu;rowMenu.PlacementTarget=VmList;rowMenu.IsOpen=true;
             await Dispatcher.InvokeAsync(()=>{},DispatcherPriority.ApplicationIdle);
             if(!rowMenu.IsOpen || !SidebarOverlay.IsOpen)throw new Exception("Context menu closed the floating VM menu.");rowMenu.IsOpen=false;

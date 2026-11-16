@@ -22,12 +22,33 @@ public partial class MainWindow
                 var factor=new EditorDialog(dialog,"Two-factor authentication","Continue");var code=factor.Password("TOTP code");
                 string? answer=factor.ShowDialog()==true?code.Password.Trim():null;code.Clear();return Task.FromResult(answer);
             });}finally{pass="";}
-            var preview=await api.InspectRepairAsync(server.TokenId);
+            var storageDialog=new EditorDialog(dialog,"Allow DALIZO to add virtual disks","Review changes","Cancel",false);
+            storageDialog.Note("Choose where DALIZO may create new virtual disks. You choose the VM and disk size later, in VM settings.");
+            var choices=new Dictionary<string,string>();
+            foreach(var (path,nodes) in await api.DiskStorageInventoryAsync())
+                choices.Add(path[9..]+(nodes.Length==0?" — no server restriction":" — for VMs on "+nodes),path);
+            string? storagePath=null;
+            if(choices.Count>0){
+                var allow=storageDialog.Check("Grant access to a storage location",false);
+                var store=storageDialog.Choice("Where should DALIZO be able to create disks?",choices.Keys.Cast<object>().ToArray(),null);
+                store.DisplayMemberPath="";store.SelectedIndex=-1;store.IsEnabled=false;
+                allow.Checked+=(_,_)=>{store.IsEnabled=true;if(choices.Count==1)store.SelectedIndex=0;else store.IsDropDownOpen=true;};
+                allow.Unchecked+=(_,_)=>store.IsEnabled=false;
+                storageDialog.Hint("Leave the box unchecked to review the other permissions only.");
+                storageDialog.Validate=()=>{
+                    if(allow.IsChecked==true && store.SelectedItem==null){System.Windows.MessageBox.Show(storageDialog,"Choose a storage location first.","Storage for new disks");return false;}
+                    storagePath=allow.IsChecked==true?choices[(string)store.SelectedItem]:null;return true;
+                };
+            }else storageDialog.Note("There is no storage configured for virtual disks. You can still review the other permissions.");
+            if(storageDialog.ShowDialog()!=true)return false;
+            var preview=await api.InspectRepairAsync(server.TokenId,storagePath);
             var confirm=new EditorDialog(dialog,"Review permission repair",preview.HasChanges?"Add missing permissions":"Verify existing token","Cancel",false);
             confirm.Note(preview.HasChanges?"Add the permissions needed for DALIZO’s VM controls and network selection.":"The required permissions are already in place. Check that the existing login key works.");
             confirm.Note(preview.Paths.Contains("/vms")?"VM access stays set to all current and future VMs.":"VM access stays limited to: "+string.Join(", ",preview.Paths.Where(p=>p.StartsWith("/vms/")).Select(p=>p[5..]))+".");
             confirm.Note("The selected VMs can use networks in all Proxmox SDN zones. The VMs and networks themselves are not changed.");
             if(preview.Shared)confirm.Note("Other connections use this account too. They may also gain the added permissions for VMs they can already access.");
+            foreach(var path in preview.Paths.Where(ProxmoxSetup.IsStoragePath))
+                confirm.Note("DALIZO will be able to create virtual disks on "+path[9..]+".");
             confirm.Details(preview.Description);
             confirm.Note("Your login key stays the same. Please do not change permissions in Proxmox during this step. If the final check fails, permissions already added remain in place; run this check again to continue.");
             if(confirm.ShowDialog()!=true)return false;
@@ -38,6 +59,6 @@ public partial class MainWindow
             repaired=true;return true;
         };
         try{dialog.ShowDialog();}finally{password.Clear();}
-        if(repaired){Status("Server permissions verified. Existing profile and token retained.");MessageBox.Show(owner,"Permissions verified with the existing token. Reopen VM Properties to reload the available networks.","Repair permissions",MessageBoxButton.OK,MessageBoxImage.Information);}
+        if(repaired){Status("Server permissions verified. Existing profile and token retained.");MessageBox.Show(owner,"Permissions verified with the existing token. Reopen VM Properties to reload the available networks and disk storage.","Repair permissions",MessageBoxButton.OK,MessageBoxImage.Information);}
     }
 }

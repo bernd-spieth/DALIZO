@@ -86,7 +86,7 @@ sealed partial class NativeConsole : Control
             else { nextPresentation=0;Invalidate();FrameAvailable(); }
         };
     }
-    public void Connect(Dictionary<string,string> config){Disconnect();Backend.Connect(config);Backend.SetClipboardSharing(Sharing,ImageSharing);}
+    public void Connect(Dictionary<string,string> config, bool audioEnabled=true, bool preferMjpeg=true){Disconnect();Backend.Connect(config, audioEnabled, preferMjpeg);Backend.SetClipboardSharing(Sharing,ImageSharing);}
     public void Disconnect(){ReleaseInput();unicode.Clear();pendingClipboard=null;Backend.Disconnect();ClearFrame();desired=requested=Size.Empty;}
     public void SetClipboard(bool enabled,bool images=false){clipboard=enabled;imageClipboard=images;pendingClipboard=null;wasClipboardReady=false;Backend.SetClipboardSharing(Sharing,ImageSharing);}
     public void SetResize(bool enabled){resize=enabled;desired=requested=Size.Empty;}

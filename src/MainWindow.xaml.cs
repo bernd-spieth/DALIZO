@@ -55,9 +55,9 @@ public partial class MainWindow : Window
         public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
         string sessionState="";
         public string SessionState => sessionState;
-        public string ConnectHint => sessionState=="Console open" ? "Show console" : "Connect";
+        public string ConnectHint => sessionState is "" or "Console disconnected" ? "Connect" : "Show console";
         public Visibility SessionVisibility => sessionState=="" ? Visibility.Collapsed : Visibility.Visible;
-        public Brush SessionBrush => sessionState=="Console open" ? Brushes.DodgerBlue : Brushes.SlateGray;
+        public Brush SessionBrush => sessionState is "Console open" or "Console ready" ? Brushes.DodgerBlue : Brushes.SlateGray;
         public bool CanStart {get;private set;}
         public bool CanShutdown {get;private set;}
         public string StartHint {get;private set;}="Wait for VM status.";
@@ -181,7 +181,7 @@ public partial class MainWindow : Window
         var resize = dialog.Check("Auto resolution", original?.AutoResolution ?? true);
         dialog.Note("Auto resolution requires SPICE guest tools and a compatible graphics driver. noVNC requests guest resizing when supported by the server and scales the image as a fallback. Clipboard sharing requires guest support; noVNC uses Send text to VM in the top VM actions menu.");
         SavedVm? result = null;
-        dialog.Validate = () => { if (server.SelectedItem is not ServerProfile s || !int.TryParse(id.Text, out var vmid) || vmid <= 0) throw new InvalidOperationException("Select a server and enter a positive VM ID."); result = new(original?.Id ?? Guid.NewGuid(), s.Id, vmid, name.Text.Trim(), (string)consoleType.SelectedItem, true, clipboard.IsChecked==true, resize.IsChecked==true,original?.SerialPort??"serial0",original?.Folder??"",original?.ImageClipboardEnabled??false,original?.FileTransferEnabled??false); var next = Snapshot(); next.Vms.RemoveAll(v => v.Id == result.Id); next.Vms.Add(result); ProfileStore.Validate(next); return true; };
+        dialog.Validate = () => { if (server.SelectedItem is not ServerProfile s || !int.TryParse(id.Text, out var vmid) || vmid <= 0) throw new InvalidOperationException("Select a server and enter a positive VM ID."); result = new(original?.Id ?? Guid.NewGuid(), s.Id, vmid, name.Text.Trim(), (string)consoleType.SelectedItem, true, clipboard.IsChecked==true, resize.IsChecked==true,original?.SerialPort??"serial0",original?.Folder??"",original?.ImageClipboardEnabled??false,original?.FileTransferEnabled??false,original?.SpiceAudioEnabled??true,original?.PreferSpiceMjpeg??true); var next = Snapshot(); next.Vms.RemoveAll(v => v.Id == result.Id); next.Vms.Add(result); ProfileStore.Validate(next); return true; };
         if (dialog.ShowDialog() != true || result == null) return;
         if(original!=null && (original.ServerId!=result.ServerId || original.VmId!=result.VmId || original.ConsoleType!=result.ConsoleType))CloseConsole(original.Id);
         var updated = Snapshot(); updated.Vms.RemoveAll(v => v.Id == result.Id); updated.Vms.Add(result); Commit(updated, result.Id); Status("VM saved. Click Connect to connect.");
@@ -297,9 +297,10 @@ public partial class MainWindow : Window
                 return true;
             }
             EnsureHost(); // Initialize the native runtime before consuming the short-lived ticket.
+            host!.ActiveAudioDevice=detected.AudioDevice;
             Status("Requesting a fresh SPICE ticket …");
             var config = SpiceConfig.Parse(await api.GetConsoleAsync(current, string.IsNullOrWhiteSpace(server.Proxy) ? api.Host : server.Proxy, ct));
-            ct.ThrowIfCancellationRequested(); host!.Connect(config); RememberConsole(saved);
+            ct.ThrowIfCancellationRequested(); host!.Connect(config, saved.SpiceAudioEnabled, saved.PreferSpiceMjpeg); RememberConsole(saved);
             return true;
             },error=>{
                 if(closing||ct.IsCancellationRequested||!data.Servers.Contains(server)||!OfferCertificateRetry(this,server.Address,error,true))return false;
@@ -340,6 +341,12 @@ public partial class MainWindow : Window
             Commit(new(1, new() { server }, new() { vm, new(Guid.NewGuid(), server.Id, 102, "Linux Build-Server") }), vm.Id, server.Id);
             if (store.Load().Vms.Count != 2 || SecretProtection.Unprotect(store.Load().Servers[0].ProtectedSecret!) != "synthetic-secret") throw new Exception("Profile reload / DPAPI failed");
             sessionSecrets[server.Id] = "synthetic-secret";
+            if(Environment.GetCommandLineArgs().Contains("--vm-settings-test")){
+                await CheckVmSettings(vm);
+                await CheckVmSettings(vm,hardwareAllowed:true);
+                File.WriteAllText(Path.Combine(AppContext.BaseDirectory,"smoke-result.txt"),"PASS: hardware menu, permissions, slot allocation and cancel addition.");
+                return;
+            }
             if(Environment.GetCommandLineArgs().Contains("--vm-sort-test")){await WithVmTestViewport(CheckVmListSorting);File.WriteAllText(Path.Combine(AppContext.BaseDirectory,"smoke-result.txt"),"PASS: VM sort test.");return;}
             if(Environment.GetCommandLineArgs().Contains("--certificate-retry-test")){
                 CheckCertificateRetryDialog();File.WriteAllText(Path.Combine(AppContext.BaseDirectory,"smoke-result.txt"),"PASS: certificate retry dialog, endpoint and reason, safe default, rejection and acceptance.");return;
@@ -359,9 +366,12 @@ public partial class MainWindow : Window
                 || DescribeFeature(true,false,true,false,false,false).State != "Not verified"
                 || DescribeFeature(true,false,true,false,false,true).State != "Not verified")
                 throw new Exception("Console feature availability states are incorrect");
-            await WithVmTestViewport(CheckVmListSorting);
-            await CheckSetupDialogs();
-            await CheckVmSettings(vm);
+            bool reconnectTest=Environment.GetCommandLineArgs().Contains("--reconnect-test");
+            if(!reconnectTest){
+                await WithVmTestViewport(CheckVmListSorting);
+                await CheckSetupDialogs();
+                await CheckVmSettings(vm);
+            }
             using var socket = new System.Net.Sockets.Socket(System.Net.Sockets.AddressFamily.InterNetwork, System.Net.Sockets.SocketType.Stream, System.Net.Sockets.ProtocolType.Tcp);
             socket.Bind(new IPEndPoint(IPAddress.Loopback, 0)); var port = ((IPEndPoint)socket.LocalEndPoint!).Port;
             // Deterministic failing proxy: accept and close instead of relying
@@ -375,6 +385,27 @@ public partial class MainWindow : Window
             var config = $"[virt-viewer]\ntype=spice\nhost=probe\ntls-port=1\npassword=synthetic-ticket\nproxy=http://127.0.0.1:{port}\nhost-subject=CN=probe\nca={cert.ExportCertificatePem().Replace("\r", "").Replace("\n", "\\n")}\n";
             var requests = new List<string>();
             apiFactory = (s, key) => { var api = new ProxmoxApi(s.Address, new SmokeHttp(req => { requests.Add(req.RequestUri!.AbsolutePath); return req.RequestUri.AbsolutePath.Contains("resources") ? "{\"data\":[{\"type\":\"qemu\",\"vmid\":101,\"node\":\"migrated-node\",\"name\":\"Guest\",\"status\":\"running\"}]}" : req.RequestUri.AbsolutePath.EndsWith("/config") ? "{\"data\":{\"vga\":\"qxl\"}}" : config; })); api.UseToken(s.TokenId, key); return api; };
+            if(reconnectTest){
+                try{
+                    await ConnectVm(vm);
+                    var previous=host ?? throw new Exception("Initial console missing.");
+                    ObservePowerState(vm.Id,"stopped");
+                    runtime[vm.Id]=new(new("stopped","",0),DateTimeOffset.UtcNow,null);
+                    await RestoreStartedConsole();
+                    if(host!=previous)throw new Exception("Reconnected before the VM was running.");
+                    runtime[vm.Id]=new(new("running","running",1),DateTimeOffset.UtcNow,null);
+                    await RestoreStartedConsole();
+                    if(host==null || host==previous || requests.Count(p=>p.EndsWith("/spiceproxy"))!=2)
+                        throw new Exception("Restart did not obtain a fresh SPICE console.");
+                    ObservePowerState(vm.Id,"stopped");
+                    CloseConsoleFromUser(vm.Id);
+                    SetTarget(vm);
+                    await RestoreStartedConsole();
+                    if(host!=null || stoppedConsoles.Contains(vm.Id))throw new Exception("Explicit disconnect was ignored.");
+                    File.WriteAllText(Path.Combine(AppContext.BaseDirectory,"reconnect-result.txt"),"PASS: stopped VM waits, running VM gets a fresh SPICE ticket, explicit disconnect cancels restoration. Simulated server.");
+                }finally{releaseProxy.TrySetResult(true);}
+                return;
+            }
             await CheckRowActionBindings(vm.Id);
             if(DisconnectButton.IsEnabled || VmPropertiesButton.IsEnabled || ManagementToggle.IsEnabled)throw new Exception("Toolbar disconnect enabled without a console.");
             await ConnectSelected();

@@ -29,7 +29,7 @@ By default, the Proxmox HTTPS certificate must be trusted by Windows. A per-serv
 
 Automatic setup grants console access, status, power controls, CPU, memory, name/description and network settings for the chosen VMs. It grants network use across SDN zones. Existing automatically created connections can use **Manage servers > Repair permissions**. Custom accounts need administrator review.
 
-For manual setup, the chosen VM paths need `VM.Audit`, `VM.Console`, `VM.PowerMgmt`, `VM.Config.CPU`, `VM.Config.Memory`, `VM.Config.Options` and `VM.Config.Network`. All-VM access uses `/vms` with propagation; individual access uses `/vms/<id>`. Network selection requires `SDN.Use` on the desired SDN zones, or `/sdn/zones` with propagation for all zones. Privilege-separated tokens need matching permissions for both the user and token.
+For manual setup, the chosen VM paths need `VM.Audit`, `VM.Console`, `VM.PowerMgmt`, `VM.Config.CPU`, `VM.Config.Memory`, `VM.Config.Options`, `VM.Config.Network` and `VM.Config.HWType` (audio devices and serial sockets). All-VM access uses `/vms` with propagation; individual access uses `/vms/<id>`. Network selection requires `SDN.Use` on the desired SDN zones, or `/sdn/zones` with propagation for all zones. Privilege-separated tokens need matching permissions for both the user and token.
 
 ## Help and connection errors
 
@@ -42,7 +42,7 @@ If a dialog fails, expand **Show error details** and use **Copy details**. Error
 Use Windows x64, PowerShell, and the .NET 10 SDK. Internet access is needed to restore NuGet packages. No Proxmox account is needed to build or run the synthetic API checks.
 
 ```powershell
-.\scripts\build.ps1 -Version 0.1.0-preview.10
+.\scripts\build.ps1 -Version 0.1.0-preview.11
 ```
 
 The script runs the API checks and creates a self-contained Windows x64 ZIP and SHA-256 checksum under `artifacts`. For the smaller `win-x64-no-runtime.zip`, run the same command with `-FrameworkDependent`. Both variants have separate ZIP names and checksums and can be built for the same version.

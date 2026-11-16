@@ -143,6 +143,12 @@
     </Grid>
    </Border></Popup><Grid><Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
     <Border x:Name="ConsoleArea" Background="#EAF0F6"><StackPanel VerticalAlignment="Center" HorizontalAlignment="Center"><TextBlock Text="Ready for your VM" FontSize="24" Foreground="#23445F" HorizontalAlignment="Center"/><TextBlock Text="Select a VM and click Connect to open its console." Foreground="#627C92" Margin="0,12,0,0"/></StackPanel></Border>
+    <DockPanel x:Name="SpiceSessionBar" Grid.Row="1" Visibility="Collapsed" Margin="8,3">
+     <Button x:Name="UsbDevicesButton" DockPanel.Dock="Right" Content="USB devices…" Click="UsbDevicesClicked" Padding="8,2"/>
+     <Button x:Name="RetrySpice" DockPanel.Dock="Right" Content="Reconnect" Click="RetrySpiceClicked" Padding="8,2" Visibility="Collapsed"/>
+     <TextBlock x:Name="SpicePhase" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,12,0"/>
+     <TextBlock x:Name="SpiceMedia" VerticalAlignment="Center" TextWrapping="Wrap"/>
+    </DockPanel>
    </Grid>
   </Grid>
   <Popup x:Name="StatusPopup" PlacementTarget="{Binding ElementName=WorkspaceGrid}" Placement="Custom" StaysOpen="True" AllowsTransparency="True" IsHitTestVisible="False" Focusable="False">

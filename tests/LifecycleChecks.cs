@@ -28,6 +28,31 @@ static class LifecycleChecks
                 else {Check(f.User&&f.Role,"Continued deleting after failure");f.Mode="exclusive";await api.CleanupAsync(await api.InspectCleanupAsync(f.Plan.FullTokenId));Check(!f.User&&!f.Role,"Partial cleanup retry failed");}
             }
         }
+        {
+            var f=new Server("exclusive",true);
+            using var api=new ProxmoxSetup("https://example.test",f);
+            await api.LoginAsync("root@pam","test-password");
+            const string path="/storage/local-lvm";
+            Check((await api.DiskStorageInventoryAsync()).Keys.SequenceEqual(new[]{path}),"Storage inventory includes disabled or ISO storage");
+            var preview=await api.InspectRepairAsync(f.Plan.FullTokenId,path);
+            Check(preview.Grants.Length==2 && preview.Grants.All(g=>g.Path==path) && f.Writes==0,"Unexpected storage grant scope");
+            await api.RepairAccessAsync(preview,paths=>{Check(paths.Contains(path),"Storage verification skipped");return Task.CompletedTask;});
+            Check(f.Acls.Count(a=>a["path"]==path && a["roleid"]=="PVEDatastoreUser" && a["propagate"]=="0")==2,"Storage ACL scope or role incorrect");
+            Check(!(await api.InspectRepairAsync(f.Plan.FullTokenId,path)).HasChanges,"Storage repair was not idempotent");
+            await api.CleanupAsync(await api.InspectCleanupAsync(f.Plan.FullTokenId));
+            Check(!f.Acls.Any(),"Storage assignments retained after exclusive cleanup");
+        }
+        foreach(bool perVm in new[]{false,true}){
+            var f=new Server("exclusive",perVm);f.Privileges.Remove("VM.Config.HWType");
+            using var api=new ProxmoxSetup("https://example.test",f);await api.LoginAsync("root@pam","test-password");
+            var preview=await api.InspectRepairAsync(f.Plan.FullTokenId);
+            Check(preview.MissingPrivileges.SequenceEqual(new[]{"VM.Config.HWType"}) && preview.Grants.Length==0 && f.Writes==0,"Hardware-only repair preview incorrect");
+            await api.RepairAccessAsync(preview,paths=>{
+                Check(paths.ToHashSet().SetEquals(f.Plan.Paths) && f.Privileges.Contains("VM.Config.HWType"),"Hardware repair changed VM scope or failed to grant privilege");
+                return Task.CompletedTask;
+            });
+            Check(f.Writes==1 && !(await api.InspectRepairAsync(f.Plan.FullTokenId)).HasChanges,"Hardware repair did not converge in one role update");
+        }
         foreach(bool perVm in new[]{false,true}) {
             var f=new Server("exclusive",perVm);using var api=new ProxmoxSetup("https://example.test",f);await api.LoginAsync("root@pam","test-password");
             var found=await api.FindReusableAsync(f.Plan.Paths);Check(found.Length==1&&f.Writes==0,"Reuse discovery changed access or failed");
@@ -93,6 +118,7 @@ static class LifecycleChecks
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage req,CancellationToken ct)
         {
             string path=Uri.UnescapeDataString(req.RequestUri!.AbsolutePath[11..]);
+            if(path=="storage" && req.Method==HttpMethod.Get)return Reply(new[]{new{storage="local-lvm",content="images,rootdir",disable=0},new{storage="iso",content="iso",disable=0},new{storage="old",content="images",disable=1}});
             if(path=="access/ticket")return Reply(new{ticket="PVE:test",CSRFPreventionToken="csrf"});
             Check(req.Headers.Contains("CSRFPreventionToken"),"Missing administrator auth");
             if(req.Method==HttpMethod.Get) {
@@ -110,7 +136,7 @@ static class LifecycleChecks
             if(path=="access/acl") {
                 string type=fields.ContainsKey("tokens")?"token":"user",subject=fields[type=="token"?"tokens":"users"];
                 if(fields.TryGetValue("delete",out var d)&&d=="1")Acls.RemoveAll(a=>a["ugid"]==subject&&a["path"]==fields["path"]&&a["roleid"]==fields["roles"]);
-                else Acl(fields["path"],subject,type);return Reply(null);
+                else {Acl(fields["path"],subject,type);Acls.Last()["roleid"]=fields["roles"];Acls.Last()["propagate"]=fields["propagate"];}return Reply(null);
             }
             if(path.Contains("/token/")) {
                 string token=path.Split('/').Last();
@@ -124,4 +150,3 @@ static class LifecycleChecks
         }
     }
 }
-

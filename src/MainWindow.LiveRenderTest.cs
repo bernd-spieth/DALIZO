@@ -32,6 +32,13 @@ public partial class MainWindow
             }
             var all=await api.ListVmsAsync(timeout.Token);
             var current=all.Single(v=>v.Id==vm.VmId);
+            if(Environment.GetCommandLineArgs().Contains("--disk-access-check"))
+            {
+                var rights=await api.GetDevicePermissionsAsync(current.Id,timeout.Token);
+                var stores=await api.StorageChoicesAsync(current.Node,"images",timeout.Token);
+                File.WriteAllText(resultPath,$"VM {current.Id}: VM.Config.Disk={rights.Disk}; visible disk storage: {string.Join(", ",stores.DefaultIfEmpty("(none)"))}");
+                return;
+            }
             if(current.Status!="running") throw new InvalidOperationException("VM is not running; no start action was performed.");
             if(Environment.GetCommandLineArgs().Contains("--novnc"))
             {
@@ -62,8 +69,15 @@ public partial class MainWindow
             bool resizeTest=Environment.GetCommandLineArgs().Contains("--resize-test");
             host=new SpiceHost(receiveOnly:!exerciseInput && !resizeTest); host.SetResizeEnabled(false); host.SetClipboardSharing(false); ConsoleArea.Child=host; UpdateLayout();
             string lastStatus=""; host.StatusChanged += text => lastStatus=text;
-            host.Connect(config);
+            host.Connect(config,vm.SpiceAudioEnabled,vm.PreferSpiceMjpeg);
             for(int i=0;i<150;i++) await Task.Delay(100,timeout.Token);
+            if(Environment.GetCommandLineArgs().Contains("--usb-inventory")){
+                var hardwareConfig=await api.GetConfigurationAsync(current,timeout.Token,current:true);
+                var disks=hardwareConfig.Values.Where(p=>VmConfiguration.IsDrive(p.Key)).Select(p=>p.Key);
+                var devices=await host.ListUsb().WaitAsync(timeout.Token);
+                File.WriteAllText(resultPath,$"PASS: VM {vm.VmId} drive slots {string.Join(", ",disks)}; SPICE USB inventory returned {devices.Count} local devices. No redirection or VM configuration change.");
+                return;
+            }
             if(Environment.GetCommandLineArgs().Contains("--clipboard-capabilities"))
             {
                 if(host.NativeClipboardSharing) throw new InvalidOperationException("Read-only diagnostic unexpectedly shares clipboard");
@@ -92,15 +106,19 @@ public partial class MainWindow
                 return;
             }
             if(exerciseInput) { host.ExerciseInputRoutingForDiagnostic(); await Task.Delay(3000,timeout.Token); }
+            var hardware=await api.GetConfigurationAsync(current,timeout.Token,current:true);
+            host.ActiveAudioDevice=hardware.Get("audio0");
+            string mediaEvidence=host.MediaDetails+"; VM audio0: "+hardware.Values.GetValueOrDefault("audio0","not configured");
             string evidence; bool woke=false;
             try { evidence=host.VerifyReceivedFrame(); }
-            catch(InvalidOperationException error) when (Environment.GetCommandLineArgs().Contains("--wake-pointer") && error.Message.StartsWith("SPICE framebuffer is entirely black"))
+            catch(InvalidOperationException) when (Environment.GetCommandLineArgs().Contains("--wake-pointer") && host.HasFrame)
             {
                 host.WakePointerOnceForDiagnostic(); woke=true;
                 await Task.Delay(3000,timeout.Token);
-                evidence=host.VerifyReceivedFrame();
+                try { evidence=host.VerifyReceivedFrame(); }
+                catch(InvalidOperationException ex){throw new InvalidOperationException(ex.Message+" "+host.SessionPhase+"; "+mediaEvidence,ex);}
             }
-            File.WriteAllText(resultPath,"PASS: console image test for "+vmName+"; "+evidence+"; pointerWake="+woke+"; inputExercise="+exerciseInput+"; no guest text, mouse clicks, power or configuration commands sent.");
+            File.WriteAllText(resultPath,"PASS: console image test for "+vmName+"; "+evidence+"; "+host.SessionPhase+"; "+mediaEvidence+"; pointerWake="+woke+"; inputExercise="+exerciseInput+"; no guest text, mouse clicks, power or configuration commands sent.");
         }
         catch(Exception error) { File.WriteAllText(resultPath,"FAIL: "+error.GetType().Name+": "+error.Message); }
         finally { host?.Dispose(); host=null; vncHost?.Dispose(); vncHost=null; Close(); }
